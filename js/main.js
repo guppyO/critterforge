@@ -12,7 +12,7 @@ import { Race } from './race.js';
 import { genOpponent, genTeam, genName } from './opponents.js';
 import { renderEditor, stopEditorLoop } from './editor.js';
 import { showMenu, showStable, showModes, showShop, showGauntlet, showHowto, showSettings, stopMenuLoop } from './screens.js';
-import { showBoneyard, showCircuit, showLink } from './screens2.js';
+import { showBoneyard, showCircuit, showLink, showTournament } from './screens2.js';
 import * as net from './net.js';
 import { encodeReplay, decodeReplay } from './replay.js';
 import { toast, showModal, closeModal, confirmModal } from './ui-bits.js';
@@ -212,6 +212,35 @@ const nav = {
   link() { leaveScreens(); net.closeNet(); refreshTopbar(); showLink(screenEl, nav); },
   linkHost(mode = 'duel') { startLink('host', null, mode); },
   linkJoin(code) { startLink('join', code); },
+
+  // ---------- Tournament of 8 ----------
+  tournament() {
+    leaveScreens(); refreshTopbar();
+    const seedBase = Math.floor(Math.random() * 1e9);
+    const lvl = 2 + Math.floor(Math.random() * 7);
+    const entrants = Array.from({ length: 8 }, (_, i) => genOpponent(opponentRating(G.rating + 150), lvl, seedBase + i * 911));
+    // scouting sims → single-match strength → rough champion odds
+    const w = new Array(8).fill(0);
+    for (let i = 0; i < 8; i++) {
+      for (let k = 0; k < 3; k++) {
+        const j = (i + 1 + (k * 2 + i) % 7) % 8;
+        const res = simulate([[entrants[i]], [entrants[j]]], 'duel', seedBase + i * 97 + k * 13);
+        if (res.winnerTeam === 0) w[i]++; else if (res.winnerTeam === -1) w[i] += 0.5;
+      }
+    }
+    const strength = w.map(x => Math.pow(x + 0.5, 2.2));
+    const sSum = strength.reduce((a, b) => a + b, 0);
+    const odds = strength.map(s => Math.round(clamp(0.85 / (s / sSum), 1.6, 15) * 10) / 10);
+    tourney = {
+      entrants, odds, bet: null, started: false,
+      rounds: [
+        [{ a: 0, b: 1, winner: null }, { a: 2, b: 3, winner: null }, { a: 4, b: 5, winner: null }, { a: 6, b: 7, winner: null }],
+        [{ a: null, b: null, winner: null }, { a: null, b: null, winner: null }],
+        [{ a: null, b: null, winner: null }],
+      ],
+    };
+    renderTournament();
+  },
 
   // ---------- Sparring Pit (fight your own critters, no stakes) ----------
   sparSetup() {
@@ -521,6 +550,109 @@ function runRace(entrants) {
           else nav.modes();
         },
       });
+    },
+  });
+}
+
+// ---------------- Tournament of 8 ----------------
+let tourney = null;
+
+function tourneyNextMatch() {
+  if (!tourney) return null;
+  return tourney.rounds.flat().find(m => m.winner === null && m.a !== null && m.b !== null) || null;
+}
+
+function tourneyAdvance(m, winnerIdx) {
+  m.winner = winnerIdx;
+  const T = tourney;
+  // feed winners forward
+  const qf = T.rounds[0], sf = T.rounds[1], f = T.rounds[2][0];
+  for (let i = 0; i < 4; i++) {
+    if (qf[i].winner !== null) {
+      const slot = sf[Math.floor(i / 2)];
+      if (i % 2 === 0) slot.a = qf[i].winner; else slot.b = qf[i].winner;
+    }
+  }
+  for (let i = 0; i < 2; i++) {
+    if (sf[i].winner !== null) {
+      if (i === 0) f.a = sf[i].winner; else f.b = sf[i].winner;
+    }
+  }
+  if (f.winner !== null) tourneySettle();
+}
+
+function tourneyWinnerOf(m, summary) {
+  if (summary.winnerTeam === 0) return m.a;
+  if (summary.winnerTeam === 1) return m.b;
+  return summary.hp0 >= summary.hp1 ? m.a : m.b; // draws: judges lean to hp
+}
+
+function tourneySettle() {
+  const T = tourney;
+  const champ = T.rounds[2][0].winner;
+  G.stats.tourneys++;
+  if (T.bet) {
+    if (T.bet.idx === champ) {
+      const payout = Math.round(T.bet.stake * T.odds[T.bet.idx]);
+      G.dna += payout;
+      G.stats.tourneyBetsWon++;
+      G.stats.betProfit += payout - T.bet.stake;
+      SFX.jackpot();
+      toast(`👑 Your champion delivered! +${fmt(payout)} 🧪`);
+    } else {
+      G.stats.betProfit -= T.bet.stake;
+      SFX.sad();
+      toast(`Your champion fell. ${T.bet.stake} 🧪 gone.`, true);
+    }
+  } else SFX.cheer();
+  save(); refreshTopbar();
+}
+
+function renderTournament() {
+  showTournament(screenEl, nav, tourney, {
+    onBet(idx, stake) {
+      if (idx !== null) { G.dna -= stake; tourney.bet = { idx, stake }; save(); refreshTopbar(); }
+      tourney.started = true;
+      renderTournament();
+    },
+    onPlay() {
+      const m = tourneyNextMatch();
+      if (!m) return renderTournament();
+      const [a, b] = [tourney.entrants[m.a], tourney.entrants[m.b]];
+      const seed = Math.floor(Math.random() * 1e9);
+      lastReplay = { mode: 'duel', seed, teams: [[a], [b]] };
+      const roundName = tourney.rounds[0].includes(m) ? 'QUARTERFINAL' : tourney.rounds[1].includes(m) ? 'SEMIFINAL' : 'GRAND FINAL';
+      const battle = new Battle({ teams: [[a], [b]], mode: 'duel', seed, labels: [a.name, b.name], gore: gore() });
+      runSim(battle, {
+        title: `🎪 ${roundName} — ${a.name} vs ${b.name}`,
+        onDone: () => {
+          tourneyAdvance(m, tourneyWinnerOf(m, battle.summary()));
+          leaveScreens();
+          renderTournament();
+        },
+      });
+    },
+    onSimRest() {
+      let m, guard = 0;
+      while ((m = tourneyNextMatch()) && guard++ < 8) {
+        const res = simulate([[tourney.entrants[m.a]], [tourney.entrants[m.b]]], 'duel', Math.floor(Math.random() * 1e9));
+        tourneyAdvance(m, tourneyWinnerOf(m, res));
+      }
+      renderTournament();
+    },
+    onNew() { nav.tournament(); },
+    onLeave() {
+      // walking out mid-tournament resolves it off-screen (bets settle)
+      if (tourney && tourney.started && tourney.rounds[2][0].winner === null) {
+        let m, guard = 0;
+        while ((m = tourneyNextMatch()) && guard++ < 8) {
+          const res = simulate([[tourney.entrants[m.a]], [tourney.entrants[m.b]]], 'duel', Math.floor(Math.random() * 1e9));
+          tourneyAdvance(m, tourneyWinnerOf(m, res));
+        }
+        toast('Tournament resolved while you left — check your DNA.');
+      }
+      tourney = null;
+      nav.circuit();
     },
   });
 }

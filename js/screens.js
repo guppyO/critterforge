@@ -209,7 +209,7 @@ export function showModes(container, nav) {
       <div class="card clicky mode-card" id="mo-gauntlet"><div class="mc-emoji">🔥</div><h3>The Gauntlet</h3>
         <p>Ten fights, rising difficulty, growing DNA bank. Lose and you keep only half. Cash out anytime…</p></div>
       <div class="card clicky mode-card" id="mo-circuit"><div class="mc-emoji">📺</div><h3>The Circuit</h3>
-        <p>Live exhibition matches, all day long. Study the fighters, read the odds, and put your DNA where your gut is.</p></div>
+        <p>Live exhibition matches and 8-critter tournaments. Study the fighters, read the odds, back a champion.</p></div>
       <div class="card clicky mode-card" id="mo-boneyard" style="border-color:rgba(255,107,129,.35)"><div class="mc-emoji">💀</div><h3>Boneyard League</h3>
         <p>Triple rewards. Streak bonuses. One rule: <b>lose and your critter is gone forever.</b></p></div>
       <div class="card clicky mode-card" id="mo-link"><div class="mc-emoji">🌐</div><h3>VS Friend</h3>

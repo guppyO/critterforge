@@ -154,4 +154,29 @@ const ok = (cond, name) => { assert(cond, name); pass++; console.log('  ✓ ' + 
   ok(wA >= 0 && wA <= 7, `odds sampling runs (A won ${wA}/7)`);
 }
 
+// ---- tournament bracket resolution ----
+{
+  const entrants = Array.from({ length: 8 }, (_, i) => genOpponent(1400, 4, 5000 + i * 911));
+  const rounds = [
+    [{ a: 0, b: 1, winner: null }, { a: 2, b: 3, winner: null }, { a: 4, b: 5, winner: null }, { a: 6, b: 7, winner: null }],
+    [{ a: null, b: null, winner: null }, { a: null, b: null, winner: null }],
+    [{ a: null, b: null, winner: null }],
+  ];
+  const nextMatch = () => rounds.flat().find(m => m.winner === null && m.a !== null && m.b !== null) || null;
+  const advance = (m, wIdx) => {
+    m.winner = wIdx;
+    const [qf, sf, f] = [rounds[0], rounds[1], rounds[2][0]];
+    for (let i = 0; i < 4; i++) if (qf[i].winner !== null) { const s = sf[Math.floor(i / 2)]; if (i % 2 === 0) s.a = qf[i].winner; else s.b = qf[i].winner; }
+    for (let i = 0; i < 2; i++) if (sf[i].winner !== null) { if (i === 0) f.a = sf[i].winner; else f.b = sf[i].winner; }
+  };
+  let m, played = 0;
+  while ((m = nextMatch()) && played < 10) {
+    const res = simulate([[entrants[m.a]], [entrants[m.b]]], 'duel', 100 + played * 31);
+    advance(m, res.winnerTeam === 1 ? m.b : m.a);
+    played++;
+  }
+  ok(played === 7, `bracket resolves in exactly 7 matches (played ${played})`);
+  ok(rounds[2][0].winner !== null, 'tournament crowns a champion');
+}
+
 console.log(`\nAll ${pass} smoke tests passed.`);

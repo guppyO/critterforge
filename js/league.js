@@ -37,7 +37,8 @@ export function defaultProfile() {
     settings: { sfx: 0.8, music: 0.3, speed: 1, gore: 'goo' }, // gore: 'goo' | 'blood' | 'off'
     seenIntro: false,
     stats: { battles: 0, wins: 0, losses: 0, draws: 0, races: 0, raceWins: 0, gauntletBest: 0, dnaEarned: 0,
-             friendWins: 0, friendLosses: 0, betsWon: 0, betsLost: 0, betProfit: 0, boneyardWins: 0 },
+             friendWins: 0, friendLosses: 0, betsWon: 0, betsLost: 0, betProfit: 0, boneyardWins: 0,
+             tourneyBetsWon: 0, tourneys: 0 },
     gauntlet: null, // {creId, stage, bank}
     boneyard: { streak: 0, best: 0 },
     graveyard: [], // fallen critters: {name, level, wins, losses, traits, planet, epitaph, diedAt, streak}
@@ -180,6 +181,7 @@ export const MILESTONES = [
   { id: 'social',     icon: '🌐', name: 'Friendly Rivalry',   desc: 'Beat a friend online',                 dna: 80,  check: (g) => g.stats.friendWins >= 1 },
   { id: 'maxlevel',   icon: '✨', name: 'Final Form',         desc: 'Raise a critter to level 10',          dna: 200, check: (g) => g.creatures.some(c => c.level >= 10) },
   { id: 'collector',  icon: '🧩', name: 'Gene Collector',     desc: 'Unlock every part in the Gene Shop',   dna: 400, check: (g) => g.unlocked.length >= TOTAL_PARTS },
+  { id: 'kingmaker',  icon: '🎪', name: 'Kingmaker',          desc: 'Win an outright tournament bet',       dna: 150, check: (g) => (g.stats.tourneyBetsWon || 0) >= 1 },
 ];
 
 // returns newly-completed milestones (and grants their DNA)

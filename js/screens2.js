@@ -109,6 +109,7 @@ export function showCircuit(container, nav, matchup) {
       <span class="dim">Stake:</span>
       ${[25, 50, 100, 250].map(v => `<button class="ed-tab stake" data-stake="${v}">${v} 🧪</button>`).join('')}
       <div class="spacer" style="flex:1"></div>
+      <button class="btn gold" id="ci-tourney">🎪 Tournament of 8</button>
       <button class="btn" id="ci-watch">🎬 Just watch (no bet)</button>
       <button class="btn small" id="ci-next">↻ New matchup</button>
     </div>
@@ -128,6 +129,7 @@ export function showCircuit(container, nav, matchup) {
 
   root.querySelector('#ci-back').onclick = () => { SFX.click(); nav.modes(); };
   root.querySelector('#ci-next').onclick = () => { SFX.click(); nav.circuit(); };
+  root.querySelector('#ci-tourney').onclick = () => { SFX.click(); nav.tournament(); };
   root.querySelector('#ci-watch').onclick = () => { SFX.click(); nav.circuitWatch(matchup, -1, 0); };
   root.querySelectorAll('[data-back]').forEach(b => b.onclick = () => {
     const side = parseInt(b.dataset.back);
@@ -135,6 +137,94 @@ export function showCircuit(container, nav, matchup) {
     SFX.coin();
     nav.circuitWatch(matchup, side, stake);
   });
+}
+
+// ---------------- TOURNAMENT ----------------
+// T: {entrants, odds, rounds:[[{a,b,winner}...]], bet, done}
+const ROUND_NAMES = ['Quarterfinals', 'Semifinals', 'Grand Final'];
+export function showTournament(container, nav, T, act) {
+  container.innerHTML = '';
+  const betting = !T.bet && !T.started;
+  const name = (i) => i === null || i === undefined ? '<span class="dim">— tbd —</span>' : esc(T.entrants[i].name);
+  const planetIc = (i) => (PLANETS[T.entrants[i].design.planet] || PLANETS.meridian).icon;
+
+  const colHtml = (rIdx) => T.rounds[rIdx].map((m, mi) => `
+    <div class="card" style="padding:10px;margin-bottom:10px;${m.winner !== null ? 'opacity:.85' : ''}">
+      ${[m.a, m.b].map(idx => {
+        const isW = m.winner !== null && idx === m.winner;
+        const isL = m.winner !== null && idx !== m.winner && idx !== null;
+        const pick = T.bet && T.bet.idx === idx ? ' 🎯' : '';
+        return `<div class="statline" style="${isL ? 'text-decoration:line-through;opacity:.5' : ''}${isW ? 'color:var(--acc2);font-weight:800' : ''}">
+          <span ${betting && idx !== null ? `class="t-pick" data-pick="${idx}" style="cursor:pointer"` : ''}>${idx !== null ? planetIc(idx) + ' ' : ''}${name(idx)}${pick}</span>
+          ${betting && idx !== null ? `<b style="color:var(--acc2)">${T.odds[idx].toFixed(1)}×</b>` : isW ? '<b>✓</b>' : ''}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+
+  const next = T.rounds.flat().find(m => m.winner === null && m.a !== null && m.b !== null);
+  const champion = T.rounds[2][0].winner;
+
+  const root = el(`<div class="screen-inner">
+    <div class="sect-head">
+      <button class="btn small" id="tn-back">← Back</button>
+      <h1>🎪 Tournament of 8</h1>
+      <div class="spacer"></div>
+      <div class="tb-chip dna">🧪 <span>${fmt(G.dna)}</span></div>
+    </div>
+    ${betting ? `<p class="sub">Eight wild critters, one crown. <b>Click a name</b> to back your champion — outright odds shown — or run it bet-free. Odds come from scouting sims.</p>` :
+      T.bet ? `<p class="sub">Your champion: <b style="color:var(--acc2)">🎯 ${esc(T.entrants[T.bet.idx].name)}</b> — ${T.bet.stake} 🧪 at ${T.odds[T.bet.idx].toFixed(1)}×</p>` :
+      `<p class="sub">No bet placed — enjoying the carnage for its own sake.</p>`}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start">
+      ${[0, 1, 2].map(r => `<div><h4 style="color:var(--ink-faint);text-transform:uppercase;font-size:.75rem;letter-spacing:1.5px;margin-bottom:8px">${ROUND_NAMES[r]}</h4>${colHtml(r)}</div>`).join('')}
+    </div>
+    <div class="ed-panel" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      ${betting ? `
+        <span class="dim">Stake:</span>
+        ${[25, 50, 100, 250].map(v => `<button class="ed-tab t-stake" data-stake="${v}">${v} 🧪</button>`).join('')}
+        <span class="dim" id="tn-picked" style="min-width:150px">Pick a critter above…</span>
+        <div class="spacer" style="flex:1"></div>
+        <button class="btn gold" id="tn-bet" disabled>💰 Place bet & begin</button>
+        <button class="btn" id="tn-nobet">Run it bet-free</button>
+      ` : champion !== null ? `
+        <h3 style="margin:0">👑 ${esc(T.entrants[champion].name)} takes the crown!</h3>
+        <div class="spacer" style="flex:1"></div>
+        <button class="btn" id="tn-leave">Leave</button>
+        <button class="btn primary" id="tn-new">🎪 New tournament</button>
+      ` : `
+        <button class="btn primary" id="tn-play">▶ Play: ${next ? esc(T.entrants[next.a].name) + ' vs ' + esc(T.entrants[next.b].name) : ''}</button>
+        <button class="btn" id="tn-skip">⏩ Instant-sim the rest</button>
+      `}
+    </div>
+  </div>`);
+  container.appendChild(root);
+  root.querySelector('#tn-back').onclick = () => { SFX.click(); act.onLeave(); };
+
+  if (betting) {
+    let stake = 50, picked = -1;
+    const stakes = root.querySelectorAll('.t-stake');
+    const setStake = (v) => { stake = v; stakes.forEach(x => x.classList.toggle('on', parseInt(x.dataset.stake) === v)); };
+    setStake(50);
+    stakes.forEach(b => b.onclick = () => { SFX.tick(); setStake(parseInt(b.dataset.stake)); });
+    root.querySelectorAll('.t-pick').forEach(s => s.onclick = () => {
+      SFX.click();
+      picked = parseInt(s.dataset.pick);
+      root.querySelector('#tn-picked').innerHTML = `Backing <b style="color:var(--acc2)">${esc(T.entrants[picked].name)}</b> (${T.odds[picked].toFixed(1)}×)`;
+      root.querySelector('#tn-bet').disabled = false;
+    });
+    root.querySelector('#tn-bet').onclick = () => {
+      if (picked < 0) return;
+      if (G.dna < stake) { SFX.deny(); toast('Not enough DNA for that stake!', true); return; }
+      SFX.coin();
+      act.onBet(picked, stake);
+    };
+    root.querySelector('#tn-nobet').onclick = () => { SFX.click(); act.onBet(null, 0); };
+  } else if (champion !== null) {
+    root.querySelector('#tn-leave').onclick = () => { SFX.click(); act.onLeave(); };
+    root.querySelector('#tn-new').onclick = () => { SFX.click(); act.onNew(); };
+  } else {
+    root.querySelector('#tn-play').onclick = () => { SFX.click(); act.onPlay(); };
+    root.querySelector('#tn-skip').onclick = () => { SFX.click(); act.onSimRest(); };
+  }
 }
 
 // ---------------- VS FRIEND (link lobby) ----------------
