@@ -14,10 +14,23 @@ import { renderEditor, stopEditorLoop } from './editor.js';
 import { showMenu, showStable, showModes, showShop, showGauntlet, showHowto, showSettings, stopMenuLoop } from './screens.js';
 import { showBoneyard, showCircuit, showLink } from './screens2.js';
 import * as net from './net.js';
+import { encodeReplay, decodeReplay } from './replay.js';
 import { toast, showModal, closeModal, confirmModal } from './ui-bits.js';
 import { rng, clamp } from './util.js';
 
 const gore = () => G.settings.gore || 'goo';
+
+// last battle, capturable as a replay code
+let lastReplay = null;
+function copyText(t) {
+  try { navigator.clipboard.writeText(t).then(() => toast('Replay code copied! 📼')); }
+  catch (e) { window.prompt('Copy this replay code:', t); }
+}
+function wireReplayCopy(box) {
+  const b = box.querySelector('[data-replay-copy]');
+  if (b) b.onclick = () => { SFX.click(); if (lastReplay) copyText(encodeReplay(lastReplay)); };
+}
+const replayBtnHtml = () => lastReplay ? '<button class="btn small" data-replay-copy>📼 Copy replay</button>' : '';
 
 const screenEl = document.getElementById('screen');
 const topbar = document.getElementById('topbar');
@@ -178,9 +191,10 @@ const nav = {
   },
   circuitWatch(matchup, side, stake) {
     if (side >= 0) { G.dna -= stake; save(); refreshTopbar(); }
+    const seed = Math.floor(Math.random() * 1e9);
+    lastReplay = { mode: 'duel', seed, teams: [[matchup.a], [matchup.b]] };
     const battle = new Battle({
-      teams: [[matchup.a], [matchup.b]], mode: 'duel',
-      seed: Math.floor(Math.random() * 1e9),
+      teams: [[matchup.a], [matchup.b]], mode: 'duel', seed,
       labels: [matchup.a.name, matchup.b.name], gore: gore(),
     });
     runSim(battle, {
@@ -193,6 +207,48 @@ const nav = {
   link() { leaveScreens(); net.closeNet(); refreshTopbar(); showLink(screenEl, nav); },
   linkHost() { startLink('host'); },
   linkJoin(code) { startLink('join', code); },
+
+  // ---------- Replay Theater ----------
+  replayTheater() {
+    const box = showModal(`
+      <h2>📼 Replay Theater</h2>
+      <p class="dim" style="margin-top:8px">Paste a replay code from a friend (or your own — every results screen has a “Copy replay” button) and watch the exact battle, blow for blow.</p>
+      <div class="ed-namebar" style="margin-top:12px">
+        <input type="text" id="rt-code" placeholder="CFR1.…" spellcheck="false">
+      </div>
+      <div class="modal-btns">
+        ${lastReplay ? '<button class="btn" data-replay-copy>📼 Copy last battle</button>' : ''}
+        <button class="btn" id="rt-cancel">Cancel</button>
+        <button class="btn primary" id="rt-watch">▶ Watch</button>
+      </div>`);
+    wireReplayCopy(box);
+    box.querySelector('#rt-cancel').onclick = () => { SFX.click(); closeModal(); };
+    box.querySelector('#rt-watch').onclick = () => {
+      const res = decodeReplay(box.querySelector('#rt-code').value);
+      if (res.err) { SFX.deny(); toast(res.err, true); return; }
+      SFX.click(); closeModal();
+      const labels = res.teams.map(t => t.length === 1 ? t[0].name : t[0].name + ' & co.');
+      const battle = new Battle({ teams: res.teams, mode: res.mode, seed: res.seed, labels, gore: gore() });
+      lastReplay = { mode: res.mode, seed: res.seed, teams: res.teams };
+      runSim(battle, {
+        title: `📼 REPLAY — ${labels[0]} vs ${labels[1]}`,
+        onDone: () => {
+          const box2 = showModal(`
+            <h2 style="text-align:center">📼 That's how it went down.</h2>
+            <div class="modal-btns" style="justify-content:center">
+              <button class="btn" id="rt2-again">↻ Watch again</button>
+              <button class="btn primary" id="rt2-done">Done</button>
+            </div>`, { dismissable: false });
+          box2.querySelector('#rt2-again').onclick = () => {
+            SFX.click(); closeModal();
+            const b2 = new Battle({ teams: res.teams, mode: res.mode, seed: res.seed, labels, gore: gore() });
+            runSim(b2, { title: `📼 REPLAY — ${labels[0]} vs ${labels[1]}`, onDone: () => nav.modes() });
+          };
+          box2.querySelector('#rt2-done').onclick = () => { SFX.click(); closeModal(); nav.modes(); };
+        },
+      });
+    };
+  },
 };
 
 function activeCreature() {
@@ -304,7 +360,9 @@ function runSim(sim, { title, onDone }) {
 
 // ---------------- battle flow ----------------
 function runBattle({ teams, mode, ranked, oppRating = 0, gauntlet = false, labels, returnTo }) {
-  const battle = new Battle({ teams, mode, seed: Math.floor(Math.random() * 1e9), labels, gore: gore() });
+  const seed = Math.floor(Math.random() * 1e9);
+  lastReplay = { mode, seed, teams };
+  const battle = new Battle({ teams, mode, seed, labels, gore: gore() });
   const modeName = { duel: 'RANKED DUEL', sumo: 'SUMO SHOWDOWN', team: 'TEAM RUMBLE' }[mode];
   runSim(battle, {
     title: `${gauntlet ? 'THE GAUNTLET' : modeName} — ${labels[0]} vs ${labels[1]}`,
@@ -402,10 +460,12 @@ function resultsModal({ outcome, mode, delta, ranked, rows, xpAmt, levelUps, pla
     ${ranked ? `<div class="rating-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta} rating → ${G.rating} ${leagueOf(G.rating).icon}</div>` : ''}
     ${rowsHtml}${xpHtml}
     <div class="modal-btns">
+      ${replayBtnHtml()}
       ${gauntlet ? '' : mode === 'duel' || mode === 'sumo' ? '<button class="btn" id="rs-again">⚔️ Fight again</button>' : ''}
       <button class="btn primary" id="rs-ok">Continue</button>
     </div>`, { dismissable: false });
   if (levelUps.length) SFX.levelup();
+  wireReplayCopy(box);
   box.querySelector('#rs-ok').onclick = () => { SFX.click(); closeModal(); onClose(); };
   const again = box.querySelector('#rs-again');
   if (again) again.onclick = () => { SFX.click(); closeModal(); onClose(); setTimeout(() => nav.quickDuel(mode), 60); };
@@ -443,9 +503,10 @@ function runRace(entrants) {
 
 // ---------------- Boneyard battle ----------------
 function runBoneyardBattle(cre, opp) {
+  const seed = Math.floor(Math.random() * 1e9);
+  lastReplay = { mode: 'duel', seed, teams: [[cre], [opp]] };
   const battle = new Battle({
-    teams: [[cre], [opp]], mode: 'duel',
-    seed: Math.floor(Math.random() * 1e9),
+    teams: [[cre], [opp]], mode: 'duel', seed,
     labels: [cre.name, opp.name], gore: gore(),
   });
   runSim(battle, {
@@ -543,9 +604,11 @@ function finishCircuit(battle, matchup, side, stake) {
   if (sfxWin) SFX.jackpot(); else if (side >= 0 && w !== -1) SFX.sad();
   const box = showModal(`${html}
     <div class="modal-btns" style="justify-content:center">
+      ${replayBtnHtml()}
       <button class="btn" id="ci-leave">Leave</button>
       <button class="btn primary" id="ci-again">📺 Next match</button>
     </div>`, { dismissable: false });
+  wireReplayCopy(box);
   box.querySelector('#ci-leave').onclick = () => { SFX.click(); closeModal(); nav.modes(); };
   box.querySelector('#ci-again').onclick = () => { SFX.click(); closeModal(); nav.circuit(); };
 }
@@ -557,18 +620,27 @@ function startLink(role, code = null) {
   const myCre = activeCreature();
   if (!myCre) return noCreatureFlow();
   net.closeNet();
-  link = { role, code: role === 'host' ? net.makeCode() : code, myCre, remote: null, started: false, connected: false };
+  link = { role, code: role === 'host' ? net.makeCode() : code, myCre, remote: null, started: false, connected: false, mode: 'duel' };
 
   const waitHtml = (status) => `
     <h2 style="text-align:center">🌐 ${role === 'host' ? 'Hosting battle' : 'Joining battle'}</h2>
     ${role === 'host' ? `<div style="text-align:center;margin:16px 0">
       <div class="dim">Send your friend this code:</div>
       <div style="font-size:3rem;font-weight:900;letter-spacing:14px;color:var(--acc);margin-top:6px">${link.code}</div>
+      <div class="ed-tabs" style="justify-content:center;margin-top:14px">
+        <button class="ed-tab on" data-nmode="duel">⚔️ Duel</button>
+        <button class="ed-tab" data-nmode="sumo">🟡 Sumo</button>
+      </div>
     </div>` : ''}
     <p class="dim" style="text-align:center" id="lk-status">${status}</p>
     <div class="modal-btns" style="justify-content:center"><button class="btn" id="lk-cancel">Cancel</button></div>`;
   const box = showModal(waitHtml(role === 'host' ? 'Waiting for your friend to join…' : 'Connecting to room ' + code + '…'), { dismissable: false });
   box.querySelector('#lk-cancel').onclick = () => { SFX.click(); net.closeNet(); link = null; closeModal(); nav.link(); };
+  box.querySelectorAll('[data-nmode]').forEach(b => b.onclick = () => {
+    SFX.click();
+    link.mode = b.dataset.nmode;
+    box.querySelectorAll('[data-nmode]').forEach(x => x.classList.toggle('on', x.dataset.nmode === link.mode));
+  });
 
   const setStatus = (s) => { const el2 = document.getElementById('lk-status'); if (el2) el2.textContent = s; };
 
@@ -615,26 +687,28 @@ function handleNetMessage(msg, setStatus) {
     link.remote = { name: String(msg.name || 'Rival').slice(0, 14), cre: res.cre };
     if (link.role === 'host') {
       const seed = Math.floor(Math.random() * 1e9);
-      net.send({ t: 'start', seed });
-      startNetBattle(seed);
+      net.send({ t: 'start', seed, mode: link.mode });
+      startNetBattle(seed, link.mode);
     } else setStatus('Ready! Waiting for host to start…');
   } else if (msg.t === 'start') {
-    if (link.remote) startNetBattle(msg.seed >>> 0);
+    if (link.remote) startNetBattle(msg.seed >>> 0, msg.mode === 'sumo' ? 'sumo' : 'duel');
   }
 }
 
-function startNetBattle(seed) {
+function startNetBattle(seed, mode = 'duel') {
   if (!link || !link.remote) return;
   link.started = true;
+  link.mode = mode;
   closeModal();
   const iAmHost = link.role === 'host';
   const myName = (G.playerName || 'You').slice(0, 14);
   // canonical order: host = team 0 on BOTH machines → identical sim
   const teams = iAmHost ? [[link.myCre], [link.remote.cre]] : [[link.remote.cre], [link.myCre]];
   const labels = iAmHost ? [link.myCre.name, link.remote.cre.name] : [link.remote.cre.name, link.myCre.name];
-  const battle = new Battle({ teams, mode: 'duel', seed, labels, gore: gore() });
+  lastReplay = { mode, seed, teams };
+  const battle = new Battle({ teams, mode, seed, labels, gore: gore() });
   runSim(battle, {
-    title: `🌐 FRIENDLY — ${myName} vs ${link.remote.name}`,
+    title: `🌐 FRIENDLY ${mode === 'sumo' ? 'SUMO' : 'DUEL'} — ${myName} vs ${link.remote.name}`,
     onDone: () => finishNetBattle(battle, iAmHost),
   });
 }
@@ -663,10 +737,12 @@ function finishNetBattle(battle, iAmHost) {
       <div class="reward-row"><span>${esc(cre.name)}${cre.level > before ? ` <b style="color:var(--dna)">LEVEL UP! ${before}→${cre.level} ✨</b>` : ''}</span><b>+${won ? 16 : 8} XP</b></div>
       ${connected ? '' : '<p class="dim" style="margin-top:8px">Friend disconnected — no rematch available.</p>'}
       <div class="modal-btns" style="justify-content:center">
+        ${replayBtnHtml()}
         <button class="btn" id="nb-leave">Leave</button>
         ${connected && iAmHost ? '<button class="btn primary" id="nb-rematch">⚔️ Rematch</button>' : ''}
         ${connected && !iAmHost ? '<span class="dim" style="align-self:center">Host picks the rematch…</span>' : ''}
       </div>`, { dismissable: false });
+    wireReplayCopy(box);
     box.querySelector('#nb-leave').onclick = () => {
       SFX.click(); net.closeNet(); link = null; closeModal();
       if (cre.pendingTraitPicks > 0) traitPickModal(cre, () => nav.link()); else nav.link();
@@ -675,9 +751,9 @@ function finishNetBattle(battle, iAmHost) {
     if (rm) rm.onclick = () => {
       SFX.click();
       const seed = Math.floor(Math.random() * 1e9);
-      net.send({ t: 'start', seed });
+      net.send({ t: 'start', seed, mode: link.mode });
       closeModal();
-      startNetBattle(seed);
+      startNetBattle(seed, link.mode);
     };
   } else {
     closeModal(); nav.link();

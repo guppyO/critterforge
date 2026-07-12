@@ -76,6 +76,24 @@ const ok = (cond, name) => { assert(cond, name); pass++; console.log('  ✓ ' + 
   ok(/^[A-Z2-9]{4}$/.test(makeCode()), 'room codes are 4 safe chars');
 }
 
+// ---- replay codes round-trip ----
+{
+  const { encodeReplay, decodeReplay } = await import('../js/replay.js');
+  const t1 = newCreature(DEFAULT_DESIGN(), 'Gooba');
+  const t2 = genOpponent(1300, 4, 55);
+  const code = encodeReplay({ mode: 'sumo', seed: 123456, teams: [[t1], [t2]] });
+  ok(code.startsWith('CFR1.'), 'replay code has magic prefix');
+  const dec = decodeReplay(code);
+  ok(!dec.err && dec.mode === 'sumo' && dec.seed === 123456, 'replay decodes to same mode/seed');
+  ok(dec.teams[0][0].name === 'Gooba' && dec.teams[1][0].name === t2.name, 'replay creatures survive round-trip');
+  // decoded replay reproduces the same outcome as the original teams
+  const orig = simulate([[structuredClone(t1)], [structuredClone(t2)]], 'sumo', 123456);
+  const replayed = simulate(dec.teams, 'sumo', 123456);
+  ok(orig.winnerTeam === replayed.winnerTeam && Math.abs(orig.duration - replayed.duration) < 1e-9, 'replayed battle is bit-identical');
+  ok(!!decodeReplay('CFR1.garbage!!').err, 'garbage replay code rejected');
+  ok(!!decodeReplay('hello').err, 'non-replay string rejected');
+}
+
 // ---- circuit odds sanity ----
 {
   const a = genOpponent(1500, 5, 1), b = genOpponent(1500, 5, 2);

@@ -57,7 +57,7 @@ export const WEAPONS = {
   spitter:  { name:'Glob Spitter', icon:'💧', cost:16, unlock:260, desc:'Lobs sticky globs from a distance. Kiting tool.',
               atk:{ kind:'ranged',dmg:11, cd:1.3, range:5.6,  arc:0.4, stam:8,  kb:40, projSpeed:460 } },
   stinger:  { name:'Venom Sting',  icon:'🦂', cost:15, unlock:240, desc:'Small hit, big problem: venom deals damage over time.',
-              atk:{ kind:'melee', dmg:5,  cd:1.3, range:1.2,  arc:1.0, stam:7,  kb:60, poison:{dps:4.5, dur:4} } },
+              atk:{ kind:'melee', dmg:5,  cd:1.3, range:1.2,  arc:1.0, stam:7,  kb:60, poison:{dps:4.0, dur:3.6} } },
   pincer:   { name:'Pincer Claw',  icon:'🦀', cost:13, unlock:160, desc:'Crushing grip briefly slows whatever it catches.',
               atk:{ kind:'melee', dmg:9,  cd:0.85,range:1.1,  arc:0.9, stam:6,  kb:70, slow:{mul:0.6, dur:1.4} } },
 };
@@ -67,7 +67,7 @@ export const ARMOR = {
             desc:'Light overlapping plates. Cheap, dependable protection.' },
   shell:  { name:'Heavy Shell',   icon:'🐢', cost:20, unlock:200, armor:32, mass:6, speedMul:0.88, reflect:0,
             desc:'A fortress on your back. Serious armor, serious weight.' },
-  spikes: { name:'Spike Coat',    icon:'🦔', cost:12, unlock:180, armor:8,  mass:2, speedMul:1.0,  reflect:0.15,
+  spikes: { name:'Spike Coat',    icon:'🦔', cost:12, unlock:180, armor:8,  mass:2, speedMul:1.0,  reflect:0.12,
             desc:'Attackers regret it: reflects part of melee damage taken.' },
 };
 

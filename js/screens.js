@@ -212,7 +212,9 @@ export function showModes(container, nav) {
       <div class="card clicky mode-card" id="mo-boneyard" style="border-color:rgba(255,107,129,.35)"><div class="mc-emoji">💀</div><h3>Boneyard League</h3>
         <p>Triple rewards. Streak bonuses. One rule: <b>lose and your critter is gone forever.</b></p></div>
       <div class="card clicky mode-card" id="mo-link"><div class="mc-emoji">🌐</div><h3>VS Friend</h3>
-        <p>Battle a friend online — share a 4-letter room code and let your creations settle it.</p></div>
+        <p>Battle a friend online — share a 4-letter room code and let your creations settle it. Duel or sumo!</p></div>
+      <div class="card clicky mode-card" id="mo-replay"><div class="mc-emoji">📼</div><h3>Replay Theater</h3>
+        <p>Every battle has a shareable code. Paste one here to rewatch any fight, exactly as it happened.</p></div>
     </div>
   </div>`);
   container.appendChild(root);
@@ -225,6 +227,7 @@ export function showModes(container, nav) {
   root.querySelector('#mo-circuit').onclick = () => { SFX.click(); nav.circuit(); };
   root.querySelector('#mo-boneyard').onclick = () => { SFX.click(); nav.boneyard(); };
   root.querySelector('#mo-link').onclick = () => { SFX.click(); nav.link(); };
+  root.querySelector('#mo-replay').onclick = () => { SFX.click(); nav.replayTheater(); };
 }
 
 // ---------------- SHOP ----------------
