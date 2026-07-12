@@ -37,6 +37,21 @@ export class Battle {
     this.planet = planet || homes[Math.floor(this.r() * homes.length)];
     this.arena = (PLANETS[this.planet] || PLANETS.meridian).arena;
 
+    // ---- planet hazards (deterministic terrain; sumo ring is exempt) ----
+    this.hazards = [];
+    this.gustT = 0; this.gustDir = this.r() * Math.PI * 2;
+    if (mode !== 'sumo') {
+      const kind = { pyrion: 'vent', glaciem: 'ice', verdantia: 'vine', umbra: 'shadow' }[this.planet];
+      if (kind) {
+        for (let i = 0; i < 2; i++) {
+          // keep hazards out of spawn lanes and off each other
+          const x = this.W * (0.32 + this.r() * 0.36);
+          const y = this.H * (i === 0 ? 0.18 + this.r() * 0.22 : 0.60 + this.r() * 0.22);
+          this.hazards.push({ kind, x, y, r: 46 + this.r() * 14, phase: i * 2.1 });
+        }
+      }
+    }
+
     teams.forEach((crew, team) => {
       crew.forEach((cre, i) => {
         const stats = statsOf(cre);
@@ -99,6 +114,18 @@ export class Battle {
       this.ringR = Math.max(150, 265 - (this.phaseT - 22) * 4.5);
     }
 
+    // Zephyros: periodic storm gusts shove everyone (deterministic)
+    if (this.planet === 'zephyros' && this.mode !== 'sumo') {
+      this.gustT += dt;
+      if (this.gustT > 7) { this.gustT = 0; this.gustDir = this.r() * Math.PI * 2; }
+      if (this.gustT < 1.6) {
+        for (const f of this.fighters) if (!f.dead) {
+          f.vx += Math.cos(this.gustDir) * 95 * dt;
+          f.vy += Math.sin(this.gustDir) * 95 * dt;
+        }
+      }
+    }
+
     for (const f of this.fighters) if (!f.dead) this.stepFighter(f, dt);
     this.stepProjectiles(dt);
     this.collideFighters();
@@ -131,6 +158,29 @@ export class Battle {
 
     // regen
     if (s.regen > 0 && f.hp > 0) f.hp = Math.min(f.maxHp, f.hp + s.regen * dt);
+
+    // planet hazards: terrain you fight ON, not just in front of
+    f.hazSpeed = 1; f.onIce = false; f.inShadow = false;
+    for (const h of this.hazards) {
+      const dH = dist(f.x, f.y, h.x, h.y);
+      if (h.kind === 'vent') {
+        const active = ((this.t + h.phase) % 4.2) < 1.3;
+        if (active && dH < h.r + 28) {
+          const away = angTo(h.x, h.y, f.x, f.y);
+          f.vx += Math.cos(away) * 150 * dt;
+          f.vy += Math.sin(away) * 150 * dt;
+          if (dH < h.r) {
+            this.damage(f, 5.5 * dt, null, { silent: true });
+            if (Math.random() < dt * 9) this.puff(f.x, f.y, '#ff9a5c', 1.3);
+          }
+        }
+      } else if (dH < h.r) {
+        if (h.kind === 'ice') f.onIce = true;
+        else if (h.kind === 'vine') { f.hazSpeed = 0.72; if (Math.random() < dt * 3) this.puff(f.x, f.y, 'rgba(110,200,110,.5)', 1); }
+        else if (h.kind === 'shadow') f.inShadow = true;
+      }
+    }
+    if (f.dead) return; // a lava vent can finish someone off
 
     // rage / berserk multipliers
     const lowHp = f.hp / f.maxHp;
@@ -280,10 +330,11 @@ export class Battle {
     // velocity-seeking locomotion: speed stat is the true travel speed,
     // accel stat is responsiveness. Reduced power sideways/backwards.
     const eff = 0.55 + 0.45 * Math.max(0, Math.cos(angDiff(f.ang, moveAng)));
-    const spd = s.speed * spdBuff * f.slowMul * (f.exhausted ? 0.62 : 1) * (1 - 0.09 * f.legsLost);
+    const spd = s.speed * spdBuff * f.slowMul * (f.exhausted ? 0.62 : 1) * (1 - 0.09 * f.legsLost) * (f.hazSpeed || 1);
     const dashMul = f.attack && f.attack.phase === 'dash' ? 2.0 : 1;
     const tv = spd * Math.min(1.15, thrust) * eff * dashMul;
-    const rate = Math.min(1, (s.accel / 55) * dt);
+    // ice: barely any grip — velocity changes come slowly, so you slide
+    const rate = Math.min(1, (s.accel / 55) * dt * (f.onIce ? 0.3 : 1));
     f.vx += (Math.cos(moveAng) * tv - f.vx) * rate;
     f.vy += (Math.sin(moveAng) * tv - f.vy) * rate;
     const v = Math.hypot(f.vx, f.vy);
@@ -404,8 +455,8 @@ export class Battle {
   }
 
   applyHit(src, e, atk, dmg, angle) {
-    // dodge
-    if (this.r() < e.stats.dodge) {
+    // dodge (Umbra shadow pools grant +10% while inside)
+    if (this.r() < e.stats.dodge + (e.inShadow ? 0.10 : 0)) {
       this.floater(e.x, e.y - 30, 'dodge!', '#9fd8ff', 14);
       this.emit('swish');
       return;
@@ -792,6 +843,54 @@ export class Battle {
       }
       ctx.strokeStyle = 'rgba(255,255,255,.06)';
       ctx.beginPath(); ctx.moveTo(this.W / 2, 20); ctx.lineTo(this.W / 2, this.H - 20); ctx.stroke();
+      // hazards
+      for (const h of this.hazards) {
+        if (h.kind === 'vent') {
+          const active = ((this.t + h.phase) % 4.2) < 1.3;
+          ctx.fillStyle = '#1c0d09';
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.82, 0, 0, 7); ctx.fill();
+          const glow = active ? 0.85 : 0.25 + 0.1 * Math.sin(this.t * 3 + h.phase);
+          const g2 = ctx.createRadialGradient(h.x, h.y, 4, h.x, h.y, h.r * 0.9);
+          g2.addColorStop(0, `rgba(255,160,60,${glow})`);
+          g2.addColorStop(1, 'rgba(200,60,20,0)');
+          ctx.fillStyle = g2;
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r * 0.9, h.r * 0.74, 0, 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(80,30,15,.9)'; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.82, 0, 0, 7); ctx.stroke();
+        } else if (h.kind === 'ice') {
+          ctx.fillStyle = 'rgba(190,230,255,.24)';
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.8, 0.3, 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(230,248,255,.5)'; ctx.lineWidth = 2;
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(h.x - h.r * 0.5 + i * 16, h.y - h.r * 0.3 + i * 10);
+            ctx.lineTo(h.x - h.r * 0.1 + i * 16, h.y - h.r * 0.05 + i * 10);
+            ctx.stroke();
+          }
+        } else if (h.kind === 'vine') {
+          ctx.fillStyle = 'rgba(50,110,55,.5)';
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.8, 0.2, 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(110,200,110,.6)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 + Math.sin(this.t * 1.5 + i) * 0.2;
+            ctx.beginPath();
+            ctx.moveTo(h.x + Math.cos(a) * h.r * 0.3, h.y + Math.sin(a) * h.r * 0.25);
+            ctx.quadraticCurveTo(
+              h.x + Math.cos(a) * h.r * 0.7, h.y + Math.sin(a) * h.r * 0.6 - 10,
+              h.x + Math.cos(a) * h.r * 0.95, h.y + Math.sin(a) * h.r * 0.75);
+            ctx.stroke();
+          }
+        } else if (h.kind === 'shadow') {
+          const g3 = ctx.createRadialGradient(h.x, h.y, 6, h.x, h.y, h.r);
+          g3.addColorStop(0, 'rgba(8,4,18,.9)');
+          g3.addColorStop(1, 'rgba(30,15,55,.15)');
+          ctx.fillStyle = g3;
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.8, 0, 0, 7); ctx.fill();
+          ctx.strokeStyle = `rgba(192,132,252,${0.3 + 0.2 * Math.sin(this.t * 2 + h.phase)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * 0.8, 0, 0, 7); ctx.stroke();
+        }
+      }
       // walls
       ctx.strokeStyle = A.wall; ctx.lineWidth = 10;
       roundRect(ctx, -5, -5, this.W + 10, this.H + 10, 38);

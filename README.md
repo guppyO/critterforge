@@ -46,7 +46,13 @@ ichor stay on the arena floor, and KOs scatter parts. Splatter style is a settin
 
 **Home planets:** Meridian (neutral), Verdantia 🌿 (+regen/−speed), Pyrion 🌋 (+damage/−hp),
 Glaciem ❄️ (+armor/−speed), Zephyros 🌪️ (+speed/−hp), Umbra 🌑 (+crit+dodge/−hp). Free to
-choose, small tradeoffs, themed arenas.
+choose, small tradeoffs, themed arenas — **with live terrain**: lava vents that pulse and
+scorch, ice sheets that kill your grip, grasping vines, storm gusts that shove the whole
+arena, and shadow pools that make you harder to hit.
+
+**Replays & sparring:** every battle produces a shareable replay code (`CFR1.…`) that
+replays bit-identically in the Replay Theater; the Sparring Pit pits your own critters
+against each other. **16 milestones** pay DNA bounties and map 1:1 to Steam achievements.
 
 ## Design decisions (the brief asked me to decide — here's what and why)
 

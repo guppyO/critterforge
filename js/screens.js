@@ -396,7 +396,7 @@ export function showHowto(container, nav) {
     <div class="ed-panel"><h4>🔥 The Gauntlet</h4>
       <p class="dim">A push-your-luck ladder of 10 fights. Each win banks DNA. Cash out to keep it all… or fight on. Lose, and half the bank scampers away.</p></div>
     <div class="ed-panel"><h4>🪐 Home Planets</h4>
-      <p class="dim">Every critter hails from one of six worlds — pick in the Lab. Each grants a small, free tradeoff (Pyrion hits harder but bruises easier; Glaciem is armored but slow…) and battles on that world get its scenery.</p></div>
+      <p class="dim">Every critter hails from one of six worlds — pick in the Lab. Each grants a small, free tradeoff (Pyrion hits harder but bruises easier; Glaciem is armored but slow…) and battles fought on that world use its <b>terrain</b>: Pyrion's lava vents scorch, Glaciem's ice sends critters sliding, Verdantia's vines grab, Zephyros' gusts shove everyone, and Umbra's shadow pools hide you from attacks.</p></div>
     <div class="ed-panel"><h4>🦵 Injuries</h4>
       <p class="dim">Take enough of a beating and <b>legs come off</b> — each lost leg slows you down, and the arena keeps the mess. Adjust the splatter style (goo, blood, or none) in Settings.</p></div>
     <div class="ed-panel"><h4>💀 Boneyard League</h4>

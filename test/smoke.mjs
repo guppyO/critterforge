@@ -2,6 +2,7 @@
 // validation, circuit odds, boneyard determinism). Run: node test/smoke.mjs
 import assert from 'node:assert';
 import { simulate, Battle } from '../js/battle.js';
+// (Battle used directly for hazard tests below)
 import { newCreature, DEFAULT_DESIGN } from '../js/creature.js';
 import { deriveStats, PLANETS, budgetOf } from '../js/parts.js';
 import { sanitizeRemoteCreature, packCreature, makeCode } from '../js/net.js';
@@ -92,6 +93,28 @@ const ok = (cond, name) => { assert(cond, name); pass++; console.log('  ✓ ' + 
   ok(orig.winnerTeam === replayed.winnerTeam && Math.abs(orig.duration - replayed.duration) < 1e-9, 'replayed battle is bit-identical');
   ok(!!decodeReplay('CFR1.garbage!!').err, 'garbage replay code rejected');
   ok(!!decodeReplay('hello').err, 'non-replay string rejected');
+}
+
+// ---- planet hazards ----
+{
+  const a = newCreature(DEFAULT_DESIGN(), 'HazA');
+  const b = genOpponent(1300, 4, 88);
+  const mk = (planet) => new Battle({ teams: [[structuredClone(a)], [structuredClone(b)]], mode: 'duel', seed: 909, planet });
+  ok(mk('pyrion').hazards.length === 2 && mk('pyrion').hazards[0].kind === 'vent', 'pyrion spawns lava vents');
+  ok(mk('glaciem').hazards[0].kind === 'ice' && mk('umbra').hazards[0].kind === 'shadow', 'glaciem/umbra hazards correct');
+  ok(mk('meridian').hazards.length === 0, 'meridian is hazard-free');
+  ok(new Battle({ teams: [[structuredClone(a)], [structuredClone(b)]], mode: 'sumo', seed: 1, planet: 'pyrion' }).hazards.length === 0, 'sumo ring has no hazards');
+  // determinism with hazards active
+  const run = (planet) => {
+    const bt = mk(planet);
+    bt.phase = 'fight';
+    for (let i = 0; i < 60 * 200 && !bt.finished; i++) { bt.slowmo = 0; bt.step(1 / 60); if (bt.phase === 'end') bt.finished = true; }
+    return bt.summary();
+  };
+  for (const planet of ['pyrion', 'glaciem', 'zephyros', 'verdantia', 'umbra']) {
+    const r1 = run(planet), r2 = run(planet);
+    ok(r1.winnerTeam === r2.winnerTeam && Math.abs(r1.duration - r2.duration) < 1e-9, `${planet} hazards are deterministic`);
+  }
 }
 
 // ---- circuit odds sanity ----

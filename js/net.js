@@ -7,8 +7,8 @@
 import { validateDesign, budgetOf, PLANETS } from './parts.js';
 import { TRAITS } from './creature.js';
 
-export const NET_VERSION = 4; // bump when sim behavior changes
-const PREFIX = 'critterforge-v4-';
+export const NET_VERSION = 5; // bump when sim behavior changes
+const PREFIX = 'critterforge-v5-';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no ambiguous chars
 
 export function makeCode() {
