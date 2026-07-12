@@ -157,23 +157,15 @@ the entire game is ~6,000 lines with **no binary assets**.
 
 The game is deliberately engine-free web tech, which packages cleanly:
 
-### Electron (fastest path)
+### Electron (scaffold included — `electron/main.cjs`)
 ```bash
-npm init -y && npm i -D electron electron-builder
+npm install        # pulls electron + electron-builder (dev deps)
+npm run app        # launch the desktop app locally
+npm run dist       # build Windows portable + NSIS installer via electron-builder
 ```
-`electron/main.js`:
-```js
-const { app, BrowserWindow } = require('electron');
-app.whenReady().then(() => {
-  const win = new BrowserWindow({ width: 1280, height: 800, autoHideMenuBar: true });
-  win.loadFile('index.html');   // file:// works if you bundle; or serve internally
-});
-```
-> Note: ES modules need `webSecurity` friendly loading — either bundle with esbuild
-> (`npx esbuild js/main.js --bundle --outfile=dist/game.js`) or run the embedded static
-> server from `server.cjs` inside Electron and `win.loadURL('http://localhost:8642')`.
-
-Then `electron-builder` produces the Windows build; upload with Steamworks `steamcmd`.
+The shell embeds the game's own static server (ES modules need HTTP) and opens a
+1280×800 game window; external links pop out to the real browser. Upload the
+`dist/` output with Steamworks `steamcmd`.
 
 ### Tauri (smaller binaries, ~5 MB)
 Same idea with a Rust shell: `npm create tauri-app`, point it at this folder as the dist dir.

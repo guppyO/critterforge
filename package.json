@@ -3,8 +3,33 @@
   "version": "1.0.0",
   "description": "Creature-building auto-battler — build it, train it, unleash it.",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "start": "node server.cjs",
-    "balance": "node test/balance.mjs"
+    "test": "node test/smoke.mjs",
+    "balance": "node test/balance.mjs",
+    "sweep": "node test/sweep.mjs",
+    "app": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "io.github.guppyo.critterforge",
+    "productName": "Critterforge",
+    "files": [
+      "index.html",
+      "server.cjs",
+      "electron/**",
+      "css/**",
+      "js/**",
+      "assets/**",
+      "vendor/**"
+    ],
+    "win": {
+      "target": ["portable", "nsis"]
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
   }
 }

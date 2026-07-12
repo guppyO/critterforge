@@ -1102,6 +1102,15 @@ function boot() {
   refreshTopbar();
   document.getElementById('btn-home').onclick = () => { SFX.click(); nav.menu(); };
 
+  // surface unexpected errors as toasts so players can report them
+  let errToasts = 0;
+  window.addEventListener('error', (e) => {
+    if (errToasts++ < 3) toast(`⚠ Bug: ${String(e.message).slice(0, 80)} — screenshot this!`, true);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    if (errToasts++ < 3) toast(`⚠ Bug: ${String(e.reason && e.reason.message || e.reason).slice(0, 80)}`, true);
+  });
+
   // audio unlock on first gesture
   const unlock = () => {
     unlockAudio();
