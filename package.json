@@ -1,0 +1,10 @@
+{
+  "name": "critterforge",
+  "version": "1.0.0",
+  "description": "Creature-building auto-battler — build it, train it, unleash it.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.cjs",
+    "balance": "node test/balance.mjs"
+  }
+}

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Critterforge — Build. Train. Unleash.</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- persistent top bar -->
+  <header id="topbar" class="hidden">
+    <div class="tb-left">
+      <button class="tb-logo" id="btn-home" title="Main menu">🧬 <span>CRITTERFORGE</span></button>
+    </div>
+    <div class="tb-right">
+      <div class="tb-chip" id="tb-league" title="Your league"></div>
+      <div class="tb-chip dna" title="DNA — earn it in matches, spend it in the Gene Shop">🧪 <span id="tb-dna">0</span></div>
+    </div>
+  </header>
+
+  <!-- screens are swapped by main.js -->
+  <main id="screen"></main>
+
+  <!-- simulation canvas layer -->
+  <div id="simwrap" class="hidden">
+    <canvas id="simcanvas"></canvas>
+    <div id="simhud">
+      <div id="sim-topline"></div>
+      <div id="sim-controls">
+        <button data-speed="1" class="spd on">1×</button>
+        <button data-speed="2" class="spd">2×</button>
+        <button data-speed="4" class="spd">4×</button>
+        <button id="btn-skip">Skip ⏭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal layer -->
+  <div id="modal-layer" class="hidden"><div id="modal-box"></div></div>
+
+  <!-- toast layer -->
+  <div id="toasts"></div>
+</div>
+<script src="vendor/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
