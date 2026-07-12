@@ -2,7 +2,8 @@
 // Critterforge — boot, router, sim overlay, match orchestration.
 // ============================================================
 import { el, esc, fmt, startLoop } from './util.js';
-import { SFX, setVolumes, startMusic, unlockAudio } from './audio.js';
+import { SFX, setVolumes, playMusic, unlockAudio, loadSamples } from './audio.js';
+import { loadAssets } from './assets.js';
 import { load, save, G, leagueOf, eloDelta, applyRating, opponentRating, battleRewards, raceRewards, gauntletStageReward, grantDna, ordinal, buryCreature, BONEYARD_WIN_DNA, BONEYARD_STREAK_BONUS, checkMilestones } from './league.js';
 import { statsOf, addXp, TRAITS, xpForLevel } from './creature.js';
 import { CATALOG } from './parts.js';
@@ -355,6 +356,7 @@ const SOUND_MAP = {
 function runSim(sim, { title, onDone }) {
   topbar.classList.add('hidden');
   simwrap.classList.remove('hidden');
+  playMusic('battle');
   document.getElementById('sim-topline').textContent = title;
   simSpeed = G.settings.speed || 1;
   const spdBtns = simwrap.querySelectorAll('.spd');
@@ -404,6 +406,7 @@ function runSim(sim, { title, onDone }) {
       if (simStop) { simStop(); simStop = null; }
       simwrap.classList.add('hidden');
       topbar.classList.remove('hidden');
+      playMusic('menu');
       onDone();
     }
   }
@@ -1114,7 +1117,7 @@ function boot() {
   // audio unlock on first gesture
   const unlock = () => {
     unlockAudio();
-    startMusic();
+    playMusic(simwrap.classList.contains('hidden') ? 'menu' : 'battle');
     window.removeEventListener('pointerdown', unlock);
     window.removeEventListener('keydown', unlock);
   };
@@ -1124,4 +1127,21 @@ function boot() {
   nav.menu();
   maybeOnboard();
 }
-boot();
+
+// load real assets (sprites/textures/samples) behind a tiny splash,
+// then boot — capped so a slow network can never block the game
+async function start() {
+  screenEl.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:14px">
+    <div style="font-size:3rem">🧬</div>
+    <div style="font-weight:800;letter-spacing:3px">CRITTERFORGE</div>
+    <div class="dim" style="font-size:.85rem">hatching assets…</div>
+  </div>`;
+  try {
+    await Promise.race([
+      Promise.all([loadAssets(), loadSamples()]),
+      new Promise(res => setTimeout(res, 6000)),
+    ]);
+  } catch (e) { /* fall back to procedural everything */ }
+  boot();
+}
+start();

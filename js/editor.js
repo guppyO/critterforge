@@ -10,11 +10,10 @@ import { G, save } from './league.js';
 import { SFX } from './audio.js';
 import { toast, confirmModal } from './ui-bits.js';
 
-const PALETTES = [
-  ['#f87171', '#7f1d1d'], ['#fb923c', '#7c2d12'], ['#facc15', '#713f12'], ['#4ade80', '#14532d'],
-  ['#34d399', '#064e3b'], ['#22d3ee', '#164e63'], ['#60a5fa', '#1e3a8a'], ['#a78bfa', '#4c1d95'],
-  ['#f472b6', '#831843'], ['#e879f9', '#701a75'], ['#94a3b8', '#1e293b'], ['#fde68a', '#92400e'],
-];
+import { KCOLORS } from './assets.js';
+
+// palette = the six sprite colors (Kenney Monster Builder set)
+const PALETTES = Object.entries(KCOLORS).map(([k, v]) => [v.a, v.b, k]);
 const PATTERNS = ['spots', 'stripes', 'belly', 'none'];
 const EYES = [['round', 'Round'], ['big', 'Big'], ['angry', 'Fierce']];
 
@@ -239,9 +238,9 @@ export function renderEditor(container, { creatureId = null, onBack, onSaved }) 
 
   function buildAppearance() {
     const cr = $('#ed-colors'); cr.innerHTML = '';
-    for (const [a, b] of PALETTES) {
-      const s = el(`<div class="swatch ${design.colors.a === a ? 'on' : ''}" style="background:linear-gradient(135deg,${a} 55%,${b} 55%)"></div>`);
-      s.onclick = () => { design.colors = { a, b }; SFX.click(); refresh(false); };
+    for (const [a, b, kc] of PALETTES) {
+      const s = el(`<div class="swatch ${design.kcolor === kc || (!design.kcolor && design.colors.a === a) ? 'on' : ''}" style="background:linear-gradient(135deg,${a} 55%,${b} 55%)" title="${kc}"></div>`);
+      s.onclick = () => { design.colors = { a, b }; design.kcolor = kc; SFX.click(); refresh(false); };
       cr.appendChild(s);
     }
     const pr = $('#ed-patterns'); pr.innerHTML = '';
@@ -385,6 +384,7 @@ export function randomizeDesign(design) {
   design.size = 0.85 + Math.round(r() * 8) * 0.05;
   const pal = PALETTES[Math.floor(r() * PALETTES.length)];
   design.colors = { a: pal[0], b: pal[1] };
+  design.kcolor = pal[2];
   design.pattern = PATTERNS[Math.floor(r() * PATTERNS.length)];
   design.eyes = ['round', 'big', 'angry'][Math.floor(r() * 3)];
   const planetIds = Object.keys(PLANETS);

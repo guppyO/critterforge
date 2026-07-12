@@ -6,6 +6,7 @@ import { clamp, lerp, dist, angTo, angDiff, rng } from './util.js';
 import { statsOf } from './creature.js';
 import { drawCreature } from './drawing.js';
 import { PLANETS } from './parts.js';
+import { TEX, IMG, spritesReady } from './assets.js';
 
 const TEAM_COLORS = ['#5eead4', '#ff8fa3'];
 const TEAM_NAMES = ['Teal', 'Coral'];
@@ -750,12 +751,21 @@ export class Battle {
     const order = [...this.fighters].sort((a, b) => a.y - b.y);
     for (const f of order) this.drawFighter(ctx, f);
 
-    // projectiles
+    // projectiles (real glob sprite when loaded)
+    const snot = spritesReady() ? IMG.snot_large : null;
     for (const p of this.projectiles) {
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.7)';
-      ctx.beginPath(); ctx.arc(p.x - p.vx * 0.008, p.y - p.vy * 0.008, 4, 0, 7); ctx.fill();
+      if (snot) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(p.vy, p.vx) + Math.PI / 2);
+        ctx.drawImage(snot, -11, -13, 22, 26);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.beginPath(); ctx.arc(p.x - p.vx * 0.008, p.y - p.vy * 0.008, 4, 0, 7); ctx.fill();
+      }
     }
 
     // particles
@@ -829,12 +839,28 @@ export class Battle {
       ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cx, cy, this.ringR - 16, 0, 7); ctx.stroke();
     } else {
-      // planet-themed arena floor
-      const g = ctx.createRadialGradient(this.W / 2, this.H / 2, 60, this.W / 2, this.H / 2, this.W * 0.7);
-      g.addColorStop(0, A.floorA); g.addColorStop(1, A.floorB);
-      ctx.fillStyle = g;
+      // planet-themed arena floor: real texture (ambientCG, CC0) with a
+      // tinted vignette on top; plain gradient when textures unavailable
+      const tex = TEX['tex_' + this.planet];
       roundRect(ctx, 0, 0, this.W, this.H, 34);
-      ctx.fill();
+      if (tex) {
+        ctx.save();
+        ctx.clip();
+        if (!this.floorPat) this.floorPat = ctx.createPattern(tex, 'repeat');
+        ctx.fillStyle = this.floorPat;
+        ctx.fillRect(0, 0, this.W, this.H);
+        const g = ctx.createRadialGradient(this.W / 2, this.H / 2, 80, this.W / 2, this.H / 2, this.W * 0.72);
+        g.addColorStop(0, hexA(A.floorA, 0.18));
+        g.addColorStop(1, hexA(A.floorB, 0.72));
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, this.W, this.H);
+        ctx.restore();
+      } else {
+        const g = ctx.createRadialGradient(this.W / 2, this.H / 2, 60, this.W / 2, this.H / 2, this.W * 0.7);
+        g.addColorStop(0, A.floorA); g.addColorStop(1, A.floorB);
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
       // floor rings
       ctx.strokeStyle = 'rgba(255,255,255,.05)';
       ctx.lineWidth = 2;
@@ -1025,6 +1051,11 @@ export class Battle {
       duration: this.t, hp0: hpFrac(0), hp1: hpFrac(1),
     };
   }
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 function roundRect(ctx, x, y, w, h, r) {

@@ -4,6 +4,7 @@
 // armor, organs — all animated. Local space: facing +X.
 // ============================================================
 import { shade, clamp } from './util.js';
+import { IMG, spritesReady, kcolorOf } from './assets.js';
 
 const BODY_SHAPES = {
   pod:      { rx: 1.0, ry: 0.82 },
@@ -12,8 +13,215 @@ const BODY_SHAPES = {
   longback: { rx: 1.35, ry: 0.62 },
 };
 
-// pose: {x, y, ang, walkPhase, moveAmt(0..1), attack:{id,t}|null, hurt:0..1, dead:bool}
+// ---- sprite composition maps (Kenney Monster Builder, CC0) ----
+const BODY_SPRITE = { pod: 'A', wisp: 'D', tank: 'B', longback: 'F' };
+const LEG_SPRITE = { scuttler: 'A', springer: 'C', stomper: 'E', strider: 'B' };
+const EYE_SPRITE = { round: 'eye_cute_light', big: 'eye_human', angry: 'eye_angry_red' };
+const MOUTH_FOR_WEAPON = {
+  jaw: ['mouth_closed_teeth', 'mouthI'],       // [idle, attacking]
+  crusher: ['mouth_closed_fangs', 'mouthJ'],
+  stinger: ['mouth_closed_sad', 'mouthD'],
+  spitter: ['mouthA', 'mouthG'],
+  horn: ['mouth_closed_happy', 'mouthE'],
+  pincer: ['mouth_closed_happy', 'mouthH'],
+  tailwhip: ['mouthB', 'mouthF'],
+};
+
+// pose: {x, y, ang, walkPhase, moveAmt(0..1), attack:{id,t}|null, hurt:0..1, dead:bool, legsLost}
 export function drawCreature(ctx, design, stats, pose, opts = {}) {
+  if (spritesReady()) return drawSpriteCreature(ctx, design, stats, pose, opts);
+  return drawVectorCreature(ctx, design, stats, pose, opts);
+}
+
+// ============================================================
+// SPRITE RENDERER — upright cartoon billboards on the arena
+// floor (Brawl-Stars-style), mirrored by facing direction.
+// ============================================================
+function spr(name) { return IMG[name] || null; }
+
+function drawSpriteCreature(ctx, design, stats, pose, opts = {}) {
+  const R = (stats ? stats.R : 26 * (design.size || 1)) * (opts.scale || 1);
+  const kc = kcolorOf(design);
+  const bodyIm = spr('body_' + kc + (BODY_SPRITE[design.body] || 'A'));
+  if (!bodyIm) return drawVectorCreature(ctx, design, stats, pose, opts);
+
+  const atk = pose.attack;
+  const atkT = atk ? Math.min(1, atk.t) : -1;
+  const lunge = atk && atkT >= 0 ? Math.sin(atkT * Math.PI) * R * (atk.kind === 'ram' ? 0.9 : 0.45) : 0;
+  const face = Math.cos(pose.ang || 0) >= 0 ? 1 : -1;
+  const W = R * 2.35;                                  // body draw width
+  const H = W * (bodyIm.height / bodyIm.width);
+  const bounce = Math.abs(Math.sin((pose.walkPhase || 0) * 1.6)) * (pose.moveAmt || 0) * R * 0.12;
+  const squash = 1 + Math.sin((pose.walkPhase || 0) * 3.2) * (pose.moveAmt || 0) * 0.03;
+
+  ctx.save();
+  ctx.translate(pose.x, pose.y);
+
+  // shadow at the feet
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(0, R * 0.72, R * 1.05, R * 0.32, 0, 0, 7);
+  ctx.fill();
+
+  // team ring
+  if (opts.teamColor) {
+    ctx.strokeStyle = opts.teamColor;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.ellipse(0, R * 0.72, R * 1.35, R * 0.45, 0, 0, 7);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.scale(face, 1);
+  ctx.translate(lunge, -bounce);
+  if (pose.dead) { ctx.globalAlpha = 0.85; ctx.rotate(0.35); ctx.filter = 'grayscale(60%)'; }
+  else if (pose.hurt > 0.15) ctx.filter = `brightness(${1 + pose.hurt * 1.2}) saturate(${1 - pose.hurt * 0.5})`;
+
+  const feetY = R * 0.72;
+  const bodyBottom = feetY - R * 0.18;
+
+  // ---- legs (behind body) ----
+  const legIm = spr('leg_' + kc + (LEG_SPRITE[design.legs.type] || 'A'));
+  if (legIm) {
+    const pairs = design.legs.pairs;
+    const nLegs = Math.min(6, pairs * 2);
+    const lw = R * 0.62, lh = lw * (legIm.height / legIm.width);
+    const spread = Math.min(R * 1.35, nLegs * R * 0.3);
+    for (let i = 0; i < nLegs; i++) {
+      const legIndex = i; // matches battle legsLost ordering closely enough
+      if (legIndex < (pose.legsLost || 0)) continue;
+      const fx = nLegs === 1 ? 0 : (i / (nLegs - 1) - 0.5) * spread;
+      const swing = Math.sin((pose.walkPhase || 0) * 1.6 + i * 2.4) * (pose.moveAmt || 0) * 0.5;
+      ctx.save();
+      ctx.translate(fx, bodyBottom - lh * 0.15);
+      ctx.rotate(swing * 0.5);
+      ctx.drawImage(legIm, -lw / 2, -lh * 0.1, lw, lh);
+      ctx.restore();
+    }
+    // stumps for severed legs
+    if (pose.legsLost > 0) {
+      ctx.fillStyle = 'rgba(40,25,25,0.65)';
+      for (let i = 0; i < Math.min(pose.legsLost, nLegs); i++) {
+        const fx = nLegs === 1 ? 0 : (i / (nLegs - 1) - 0.5) * spread;
+        ctx.beginPath();
+        ctx.ellipse(fx, bodyBottom, R * 0.12, R * 0.08, 0, 0, 7);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ---- arms (pincer / tailwhip get visible limbs) ----
+  const hasArms = design.weapons.includes('pincer') || design.weapons.includes('tailwhip');
+  if (hasArms) {
+    const armIm = spr('arm_' + kc + (design.weapons.includes('pincer') ? 'E' : 'B'));
+    if (armIm) {
+      const aw = R * 0.85, ah = aw * (armIm.height / armIm.width);
+      const armAtk = atk && (atk.id === 'pincer' || atk.id === 'tailwhip') ? Math.sin(atkT * Math.PI) : 0;
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(side * W * 0.42, bodyBottom - H * 0.52);
+        ctx.scale(side, 1);
+        ctx.rotate(-0.4 - armAtk * 1.1 + Math.sin((pose.walkPhase || 0) * 1.6) * 0.1);
+        ctx.drawImage(armIm, -aw * 0.15, -ah * 0.2, aw, ah);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---- body ----
+  ctx.save();
+  ctx.scale(squash, 1 / squash);
+  ctx.drawImage(bodyIm, -W / 2, bodyBottom - H, W, H);
+  ctx.restore();
+
+  // ---- armor overlays (kept simple + readable over sprites) ----
+  if (design.armor.includes('chitin') || design.armor.includes('shell')) {
+    ctx.strokeStyle = design.armor.includes('shell') ? 'rgba(40,45,60,0.85)' : 'rgba(40,45,60,0.5)';
+    ctx.lineWidth = R * (design.armor.includes('shell') ? 0.16 : 0.1);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(0, bodyBottom - H * 0.62 + i * H * 0.16, W * 0.34, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+    }
+  }
+  if (design.armor.includes('spikes')) {
+    const dIm = spr('detail_dark_horn_small');
+    if (dIm) {
+      const sw = R * 0.42, shh = sw * (dIm.height / dIm.width);
+      for (let i = -1; i <= 1; i++) {
+        ctx.save();
+        ctx.translate(i * W * 0.26, bodyBottom - H * 0.98);
+        ctx.rotate(i * 0.35);
+        ctx.drawImage(dIm, -sw / 2, -shh * 0.7, sw, shh);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---- head details for weapons/organs ----
+  const headY = bodyBottom - H * 0.92;
+  if (design.weapons.includes('horn')) {
+    const hIm = spr('detail_' + kc + '_horn_large');
+    if (hIm) {
+      const hw = R * 0.8, hh = hw * (hIm.height / hIm.width);
+      ctx.drawImage(hIm, W * 0.12, headY - hh * 0.55, hw, hh);
+    }
+  }
+  if (design.weapons.includes('stinger')) {
+    const aIm = spr('detail_' + kc + '_antenna_large');
+    if (aIm) {
+      const aw2 = R * 0.55, ah2 = aw2 * (aIm.height / aIm.width);
+      ctx.drawImage(aIm, -W * 0.35, headY - ah2 * 0.75, aw2, ah2);
+    }
+  }
+  if (design.organs.includes('gyro')) {
+    const eIm = spr('detail_' + kc + '_ear_round');
+    if (eIm) {
+      const ew = R * 0.5, eh = ew * (eIm.height / eIm.width);
+      ctx.drawImage(eIm, -W * 0.52, headY + eh * 0.1, ew, eh);
+    }
+  }
+
+  // ---- face ----
+  const attacking = atk && atkT > 0.15 && atkT < 0.75;
+  const mouthPair = MOUTH_FOR_WEAPON[design.weapons[0]] || ['mouthA', 'mouthE'];
+  const mouthIm = spr(attacking ? mouthPair[1] : mouthPair[0]) || spr(mouthPair[0]);
+  if (mouthIm) {
+    const mw = W * 0.34 * (attacking ? 1.25 : 1), mh = mw * (mouthIm.height / mouthIm.width);
+    ctx.drawImage(mouthIm, W * 0.08 - mw / 2 + W * 0.14, bodyBottom - H * 0.38 - mh / 2, mw, mh);
+  }
+  const eyeName = pose.dead ? 'eye_dead' : pose.blink ? 'eye_closed_happy' : (EYE_SPRITE[design.eyes] || 'eye_cute_light');
+  const eyeIm = spr(eyeName);
+  if (eyeIm) {
+    const es = design.eyes === 'big' ? W * 0.24 : W * 0.19;
+    const eh2 = es * (eyeIm.height / eyeIm.width);
+    const eyeY = bodyBottom - H * 0.66 - eh2 / 2;
+    ctx.drawImage(eyeIm, W * 0.02, eyeY, es, eh2);
+    ctx.drawImage(eyeIm, W * 0.3, eyeY, es, eh2);
+    if (design.eyes === 'angry') {
+      const bIm = spr('eyebrowB');
+      if (bIm) {
+        const bw = es * 1.15, bh = bw * (bIm.height / bIm.width);
+        ctx.drawImage(bIm, W * 0.0, eyeY - bh * 0.8, bw, bh);
+        ctx.drawImage(bIm, W * 0.28, eyeY - bh * 0.8, bw, bh);
+      }
+    }
+  }
+
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+// ============================================================
+// VECTOR RENDERER — original procedural art, kept as fallback
+// (headless tests, missing assets, instant first paint).
+// ============================================================
+function drawVectorCreature(ctx, design, stats, pose, opts = {}) {
   const R = (stats ? stats.R : 26 * (design.size || 1)) * (opts.scale || 1);
   const sh = BODY_SHAPES[design.body] || BODY_SHAPES.pod;
   const cA = design.colors.a, cB = design.colors.b;

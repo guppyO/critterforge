@@ -78,7 +78,7 @@ export function showMenu(container, nav) {
     const w = container.clientWidth, h = container.clientHeight;
     if (bg.width !== w) { bg.width = w; bg.height = h; }
     ctx.clearRect(0, 0, w, h);
-    ctx.globalAlpha = 0.16;
+    ctx.globalAlpha = 0.32;
     for (const wk of walkers) {
       wk.t += dt;
       wk.ang += Math.sin(wk.t * 0.6) * dt * 0.5;
@@ -433,7 +433,8 @@ export function showSettings(container, nav) {
         </div></div>
       <div class="set-row"><label>Reset all progress</label><button class="btn small danger" id="se-reset">Reset save</button></div>
     </div>
-    <p class="sub" style="margin-top:14px">Critterforge — a creature-building auto-battler. All critters are drawn procedurally from your design. 🧬</p>
+    <p class="sub" style="margin-top:14px">Critterforge — a creature-building auto-battler. 🧬<br>
+    Art: Kenney (CC0) · Textures: ambientCG (CC0) · Music: Juhani Junkala (CC0) · Full credits in CREDITS.md</p>
   </div>`);
   container.appendChild(root);
   root.querySelector('#se-back').onclick = () => { SFX.click(); nav.menu(); };
