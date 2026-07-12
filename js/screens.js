@@ -3,9 +3,9 @@
 // the router/orchestrator defined in main.js.
 // ============================================================
 import { el, esc, fmt, rng, startLoop } from './util.js';
-import { G, save, LEAGUES, leagueOf, nextLeague, SLOT_PRICES, hardReset } from './league.js';
+import { G, save, LEAGUES, leagueOf, nextLeague, SLOT_PRICES, hardReset, MILESTONES } from './league.js';
 import { statsOf, budgetOfCre, xpForLevel, MAX_LEVEL, TRAITS } from './creature.js';
-import { CATALOG, BUDGET } from './parts.js';
+import { CATALOG, BUDGET, PLANETS } from './parts.js';
 import { drawCreature, renderCreatureCard } from './drawing.js';
 import { deriveStats } from './parts.js';
 import { genOpponent } from './opponents.js';
@@ -137,6 +137,7 @@ export function showStable(container, nav, opts = {}) {
         <span class="badge lvl">LV ${cre.level}${cre.level < MAX_LEVEL ? ` · ${cre.xp}/${xpNeed} XP` : ' · MAX'}</span>
         <span class="badge wl">${cre.wins}W–${cre.losses}L</span>
         <span class="badge">${budgetOfCre(cre)}/${BUDGET} pts</span>
+        <span class="badge">${(PLANETS[cre.design.planet] || PLANETS.meridian).icon} ${(PLANETS[cre.design.planet] || PLANETS.meridian).name}</span>
       </div>
       ${traitNames ? `<div class="dim" style="margin-top:6px;font-size:.76rem">✨ ${traitNames}</div>` : ''}
       ${cre.pendingTraitPicks > 0 ? `<div style="margin-top:6px;font-size:.78rem;color:var(--acc2)">🎁 Trait pick available!</div>` : ''}
@@ -215,6 +216,8 @@ export function showModes(container, nav) {
         <p>Battle a friend online — share a 4-letter room code and let your creations settle it. Duel or sumo!</p></div>
       <div class="card clicky mode-card" id="mo-replay"><div class="mc-emoji">📼</div><h3>Replay Theater</h3>
         <p>Every battle has a shareable code. Paste one here to rewatch any fight, exactly as it happened.</p></div>
+      <div class="card clicky mode-card" id="mo-spar"><div class="mc-emoji">🥊</div><h3>Sparring Pit</h3>
+        <p>Pit two of your own critters against each other. No stakes, no rewards — just answers.</p></div>
     </div>
   </div>`);
   container.appendChild(root);
@@ -228,6 +231,7 @@ export function showModes(container, nav) {
   root.querySelector('#mo-boneyard').onclick = () => { SFX.click(); nav.boneyard(); };
   root.querySelector('#mo-link').onclick = () => { SFX.click(); nav.link(); };
   root.querySelector('#mo-replay').onclick = () => { SFX.click(); nav.replayTheater(); };
+  root.querySelector('#mo-spar').onclick = () => { SFX.click(); nav.sparSetup(); };
 }
 
 // ---------------- SHOP ----------------
@@ -247,6 +251,25 @@ export function showShop(container, nav) {
   root.querySelector('#sh-back').onclick = () => { SFX.click(); nav.menu(); };
 
   const sections = root.querySelector('#sh-sections');
+
+  // milestones
+  {
+    const done = G.milestones || [];
+    const sec = el(`<div class="ed-panel" style="margin-bottom:16px">
+      <h4>🏆 Milestones · ${done.length}/${MILESTONES.length}</h4>
+      <div class="grid cols4" id="ms-grid"></div></div>`);
+    const g = sec.querySelector('#ms-grid');
+    for (const m of MILESTONES) {
+      const got = done.includes(m.id);
+      g.appendChild(el(`<div class="card" style="padding:10px;${got ? '' : 'opacity:.55'}">
+        <div style="font-size:1.4rem">${got ? m.icon : '🔒'}</div>
+        <div style="font-weight:700;font-size:.85rem">${m.name}</div>
+        <div class="dim" style="font-size:.72rem;margin-top:2px">${m.desc}</div>
+        <div style="font-size:.75rem;font-weight:800;color:${got ? 'var(--good)' : 'var(--dna)'};margin-top:4px">${got ? '✓ claimed' : '+' + m.dna + ' 🧪'}</div>
+      </div>`));
+    }
+    sections.appendChild(sec);
+  }
 
   // stable slots
   if (G.slots < 3 + SLOT_PRICES.length) {

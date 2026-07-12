@@ -6,7 +6,9 @@
 //  - DNA is the single soft currency: matches → DNA → parts/slots.
 // ============================================================
 import { clamp } from './util.js';
-import { FREE_PARTS } from './parts.js';
+import { FREE_PARTS, CATALOG } from './parts.js';
+
+const TOTAL_PARTS = Object.values(CATALOG).reduce((s, t) => s + Object.keys(t).length, 0);
 
 const KEY = 'critterforge_save_v1';
 
@@ -41,6 +43,7 @@ export function defaultProfile() {
     graveyard: [], // fallen critters: {name, level, wins, losses, traits, planet, epitaph, diedAt, streak}
     playerName: '',
     lastWinDay: '',
+    milestones: [],
   };
 }
 
@@ -157,4 +160,41 @@ export function ordinal(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 
 // opponent rating for matchmaking: near player, slight upward pull at low ratings
 export function opponentRating(r) {
   return clamp(Math.round(r + (Math.random() - 0.48) * 130), 780, 2200);
+}
+
+// ---------- milestones (maps 1:1 to Steam achievements later) ----------
+export const MILESTONES = [
+  { id: 'hatchling',  icon: '🐣', name: 'Hatchling',          desc: 'Create your first critter',            dna: 30,  check: (g) => g.creatures.length >= 1 || g.stats.battles > 0 },
+  { id: 'firstwin',   icon: '🏆', name: 'First Goo Drawn',    desc: 'Win your first battle',                dna: 40,  check: (g) => g.stats.wins >= 1 },
+  { id: 'veteran',    icon: '⚔️', name: 'Arena Veteran',      desc: 'Win 25 battles',                       dna: 150, check: (g) => g.stats.wins >= 25 },
+  { id: 'podium',     icon: '🏁', name: 'Photo Finish',       desc: 'Win a Grand Prix race',                dna: 60,  check: (g) => g.stats.raceWins >= 1 },
+  { id: 'speeddemon', icon: '💨', name: 'Speed Demon',        desc: 'Win 5 races',                          dna: 150, check: (g) => g.stats.raceWins >= 5 },
+  { id: 'silver',     icon: '🥈', name: 'Silver Standard',    desc: 'Reach Silver League (1100)',           dna: 80,  check: (g) => g.bestRating >= 1100 },
+  { id: 'gold',       icon: '🥇', name: 'Gold Rush',          desc: 'Reach Gold League (1250)',             dna: 120, check: (g) => g.bestRating >= 1250 },
+  { id: 'diamond',    icon: '💎', name: 'Unbreakable',        desc: 'Reach Diamond League (1550)',          dna: 250, check: (g) => g.bestRating >= 1550 },
+  { id: 'legend',     icon: '👑', name: 'Living Legend',      desc: 'Reach Legend League (1700)',           dna: 500, check: (g) => g.bestRating >= 1700 },
+  { id: 'gauntlet10', icon: '🔥', name: 'Gauntlet Champion',  desc: 'Clear all 10 Gauntlet stages',         dna: 300, check: (g) => g.stats.gauntletBest >= 10 },
+  { id: 'boneyard3',  icon: '💀', name: 'Boneyard Survivor',  desc: 'Reach a 3-win Boneyard streak',        dna: 200, check: (g) => g.boneyard.best >= 3 },
+  { id: 'mourner',    icon: '🪦', name: 'Pour One Out',       desc: 'Lose a critter in the Boneyard',       dna: 60,  check: (g) => g.graveyard.length >= 1 },
+  { id: 'bettor',     icon: '💰', name: 'Sharp Bettor',       desc: 'Win 5 Circuit bets',                   dna: 100, check: (g) => g.stats.betsWon >= 5 },
+  { id: 'social',     icon: '🌐', name: 'Friendly Rivalry',   desc: 'Beat a friend online',                 dna: 80,  check: (g) => g.stats.friendWins >= 1 },
+  { id: 'maxlevel',   icon: '✨', name: 'Final Form',         desc: 'Raise a critter to level 10',          dna: 200, check: (g) => g.creatures.some(c => c.level >= 10) },
+  { id: 'collector',  icon: '🧩', name: 'Gene Collector',     desc: 'Unlock every part in the Gene Shop',   dna: 400, check: (g) => g.unlocked.length >= TOTAL_PARTS },
+];
+
+// returns newly-completed milestones (and grants their DNA)
+export function checkMilestones() {
+  const fresh = [];
+  for (const m of MILESTONES) {
+    if (G.milestones.includes(m.id)) continue;
+    let done = false;
+    try { done = m.check(G); } catch (e) {}
+    if (done) {
+      G.milestones.push(m.id);
+      grantDna(m.dna);
+      fresh.push(m);
+    }
+  }
+  if (fresh.length) save();
+  return fresh;
 }

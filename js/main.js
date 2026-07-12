@@ -3,7 +3,7 @@
 // ============================================================
 import { el, esc, fmt, startLoop } from './util.js';
 import { SFX, setVolumes, startMusic, unlockAudio } from './audio.js';
-import { load, save, G, leagueOf, eloDelta, applyRating, opponentRating, battleRewards, raceRewards, gauntletStageReward, grantDna, ordinal, buryCreature, BONEYARD_WIN_DNA, BONEYARD_STREAK_BONUS } from './league.js';
+import { load, save, G, leagueOf, eloDelta, applyRating, opponentRating, battleRewards, raceRewards, gauntletStageReward, grantDna, ordinal, buryCreature, BONEYARD_WIN_DNA, BONEYARD_STREAK_BONUS, checkMilestones } from './league.js';
 import { statsOf, addXp, TRAITS, xpForLevel } from './creature.js';
 import { CATALOG } from './parts.js';
 import { renderCreatureCard } from './drawing.js';
@@ -39,6 +39,11 @@ const simcanvas = document.getElementById('simcanvas');
 
 // ---------------- topbar ----------------
 function refreshTopbar() {
+  // milestone sweep: any newly-earned milestone pays out with a toast
+  for (const m of checkMilestones()) {
+    toast(`${m.icon} Milestone: ${m.name} — +${m.dna} 🧪`);
+    SFX.levelup();
+  }
   document.getElementById('tb-dna').textContent = fmt(G.dna);
   const lg = leagueOf(G.rating);
   document.getElementById('tb-league').innerHTML = `${lg.icon} ${lg.name} · <b>${G.rating}</b>`;
@@ -207,6 +212,25 @@ const nav = {
   link() { leaveScreens(); net.closeNet(); refreshTopbar(); showLink(screenEl, nav); },
   linkHost() { startLink('host'); },
   linkJoin(code) { startLink('join', code); },
+
+  // ---------- Sparring Pit (fight your own critters, no stakes) ----------
+  sparSetup() {
+    if (G.creatures.length < 2) {
+      SFX.deny();
+      toast('The Sparring Pit needs at least 2 critters in your stable!', true);
+      return;
+    }
+    nav.back = () => nav.modes();
+    nav.stable({
+      pick: {
+        min: 2, max: 2, title: 'Pick two sparring partners',
+        onPicked: (ids) => {
+          const [a, b] = ids.map(id => G.creatures.find(c => c.id === id));
+          runSpar(a, b);
+        },
+      },
+    });
+  },
 
   // ---------- Replay Theater ----------
   replayTheater() {
@@ -497,6 +521,30 @@ function runRace(entrants) {
           else nav.modes();
         },
       });
+    },
+  });
+}
+
+// ---------------- Sparring Pit ----------------
+function runSpar(a, b) {
+  const seed = Math.floor(Math.random() * 1e9);
+  lastReplay = { mode: 'duel', seed, teams: [[a], [b]] };
+  const battle = new Battle({ teams: [[a], [b]], mode: 'duel', seed, labels: [a.name, b.name], gore: gore() });
+  runSim(battle, {
+    title: `🥊 SPARRING — ${a.name} vs ${b.name}`,
+    onDone: () => {
+      const w = battle.summary().winnerTeam;
+      const box = showModal(`
+        <h2 style="text-align:center">${w === -1 ? '🤝 Even match!' : `🥊 ${esc([a, b][w].name)} takes the round!`}</h2>
+        <p class="dim" style="text-align:center;margin-top:8px">Sparring — no XP, no records, no hard feelings.</p>
+        <div class="modal-btns" style="justify-content:center">
+          ${replayBtnHtml()}
+          <button class="btn" id="sp-done">Done</button>
+          <button class="btn primary" id="sp-again">🥊 Again!</button>
+        </div>`, { dismissable: false });
+      wireReplayCopy(box);
+      box.querySelector('#sp-done').onclick = () => { SFX.click(); closeModal(); nav.modes(); };
+      box.querySelector('#sp-again').onclick = () => { SFX.click(); closeModal(); runSpar(a, b); };
     },
   });
 }
