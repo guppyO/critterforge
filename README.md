@@ -1,6 +1,9 @@
 # 🧬 CRITTERFORGE
 ### Build it · Train it · Unleash it
 
+**▶ PLAY NOW: https://guppyo.github.io/critterforge/** — share this link with friends and
+battle them online via *VS Friend* room codes.
+
 A creature-building **auto-battler** inspired by Bamzooki, Toribash and Spore. You design a
 creature from bodies, legs, jaws, horns and strange organs — a critter from one of **six home
 planets** — then release it into the arena to **fight, shove and race entirely on its own**.
