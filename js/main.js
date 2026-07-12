@@ -210,7 +210,7 @@ const nav = {
 
   // ---------- VS Friend ----------
   link() { leaveScreens(); net.closeNet(); refreshTopbar(); showLink(screenEl, nav); },
-  linkHost() { startLink('host'); },
+  linkHost(mode = 'duel') { startLink('host', null, mode); },
   linkJoin(code) { startLink('join', code); },
 
   // ---------- Sparring Pit (fight your own critters, no stakes) ----------
@@ -662,33 +662,38 @@ function finishCircuit(battle, matchup, side, stake) {
 }
 
 // ---------------- VS Friend flow ----------------
-let link = null; // {role, code, myCre, remote, started, connected}
+let link = null; // {role, code, myCres, remote:{name,cres}, started, connected, mode}
+const NET_MODE_LABEL = { duel: '⚔️ Duel', sumo: '🟡 Sumo', race: '🏁 Race', team: '👥 Tag Duo' };
 
-function startLink(role, code = null) {
-  const myCre = activeCreature();
-  if (!myCre) return noCreatureFlow();
+// squad = active critter first, then strongest others (for Tag Duo / fallbacks)
+function mySquad() {
+  const active = activeCreature();
+  if (!active) return [];
+  const rest = G.creatures.filter(c => c.id !== active.id).sort((a, b) => b.level - a.level);
+  return [active, ...rest].slice(0, 3);
+}
+
+function startLink(role, code = null, mode = 'duel') {
+  const squad = mySquad();
+  if (!squad.length) return noCreatureFlow();
+  if (role === 'host' && mode === 'team' && squad.length < 2) {
+    SFX.deny();
+    toast('Tag Duo needs at least 2 critters in your stable!', true);
+    return;
+  }
   net.closeNet();
-  link = { role, code: role === 'host' ? net.makeCode() : code, myCre, remote: null, started: false, connected: false, mode: 'duel' };
+  link = { role, code: role === 'host' ? net.makeCode() : code, myCres: squad, remote: null, started: false, connected: false, mode };
 
   const waitHtml = (status) => `
-    <h2 style="text-align:center">🌐 ${role === 'host' ? 'Hosting battle' : 'Joining battle'}</h2>
+    <h2 style="text-align:center">🌐 ${role === 'host' ? 'Hosting' : 'Joining'} — ${role === 'host' ? NET_MODE_LABEL[mode] : 'friend match'}</h2>
     ${role === 'host' ? `<div style="text-align:center;margin:16px 0">
       <div class="dim">Send your friend this code:</div>
       <div style="font-size:3rem;font-weight:900;letter-spacing:14px;color:var(--acc);margin-top:6px">${link.code}</div>
-      <div class="ed-tabs" style="justify-content:center;margin-top:14px">
-        <button class="ed-tab on" data-nmode="duel">⚔️ Duel</button>
-        <button class="ed-tab" data-nmode="sumo">🟡 Sumo</button>
-      </div>
     </div>` : ''}
     <p class="dim" style="text-align:center" id="lk-status">${status}</p>
     <div class="modal-btns" style="justify-content:center"><button class="btn" id="lk-cancel">Cancel</button></div>`;
   const box = showModal(waitHtml(role === 'host' ? 'Waiting for your friend to join…' : 'Connecting to room ' + code + '…'), { dismissable: false });
   box.querySelector('#lk-cancel').onclick = () => { SFX.click(); net.closeNet(); link = null; closeModal(); nav.link(); };
-  box.querySelectorAll('[data-nmode]').forEach(b => b.onclick = () => {
-    SFX.click();
-    link.mode = b.dataset.nmode;
-    box.querySelectorAll('[data-nmode]').forEach(x => x.classList.toggle('on', x.dataset.nmode === link.mode));
-  });
 
   const setStatus = (s) => { const el2 = document.getElementById('lk-status'); if (el2) el2.textContent = s; };
 
@@ -698,7 +703,7 @@ function startLink(role, code = null) {
       link.connected = true;
       SFX.connect();
       setStatus('Connected! Exchanging critters…');
-      net.send({ t: 'hello', v: net.NET_VERSION, name: (G.playerName || 'Trainer').slice(0, 14), cre: net.packCreature(link.myCre) });
+      net.send({ t: 'hello', v: net.NET_VERSION, name: (G.playerName || 'Trainer').slice(0, 14), cres: net.packSquad(link.myCres) });
     },
     onMessage: (msg) => handleNetMessage(msg, setStatus),
     onClose: () => {
@@ -722,43 +727,117 @@ function handleNetMessage(msg, setStatus) {
   if (!link || !msg || typeof msg !== 'object') return;
   if (msg.t === 'hello') {
     if (msg.v !== net.NET_VERSION) {
-      toast('Version mismatch — you two are running different game versions!', true);
+      toast('Version mismatch — you two are running different game versions! Both refresh the page.', true);
       net.closeNet(); link = null; closeModal(); nav.link();
       return;
     }
-    const res = net.sanitizeRemoteCreature(msg.cre);
+    const res = net.sanitizeSquad(msg.cres || (msg.cre ? [msg.cre] : []));
     if (res.err) {
-      toast(`Rejected opponent critter (${res.err})`, true);
+      toast(`Rejected opponent squad (${res.err})`, true);
       net.closeNet(); link = null; closeModal(); nav.link();
       return;
     }
-    link.remote = { name: String(msg.name || 'Rival').slice(0, 14), cre: res.cre };
+    link.remote = { name: String(msg.name || 'Rival').slice(0, 14), cres: res.cres };
     if (link.role === 'host') {
+      // downgrade Tag Duo if either side lacks the critters
+      let mode = link.mode;
+      if (mode === 'team' && (link.myCres.length < 2 || link.remote.cres.length < 2)) {
+        mode = 'duel';
+        toast('Friend has only one critter — switching to Duel.', true);
+      }
       const seed = Math.floor(Math.random() * 1e9);
-      net.send({ t: 'start', seed, mode: link.mode });
-      startNetBattle(seed, link.mode);
+      net.send({ t: 'start', seed, mode });
+      startNetMatch(seed, mode);
     } else setStatus('Ready! Waiting for host to start…');
   } else if (msg.t === 'start') {
-    if (link.remote) startNetBattle(msg.seed >>> 0, msg.mode === 'sumo' ? 'sumo' : 'duel');
+    if (!link.remote) return;
+    const mode = ['sumo', 'race', 'team'].includes(msg.mode) ? msg.mode : 'duel';
+    startNetMatch(msg.seed >>> 0, mode);
   }
 }
 
-function startNetBattle(seed, mode = 'duel') {
+function startNetMatch(seed, mode) {
   if (!link || !link.remote) return;
   link.started = true;
   link.mode = mode;
   closeModal();
   const iAmHost = link.role === 'host';
   const myName = (G.playerName || 'You').slice(0, 14);
+
+  if (mode === 'race') {
+    // canonical entrant order: host, guest, then 4 seeded wildcard racers
+    const r = rng(seed ^ 0x5f3759df);
+    const hostCre = iAmHost ? link.myCres[0] : link.remote.cres[0];
+    const guestCre = iAmHost ? link.remote.cres[0] : link.myCres[0];
+    const lvl = Math.max(hostCre.level, guestCre.level);
+    const entrants = [
+      { cre: hostCre, isPlayer: iAmHost },
+      { cre: guestCre, isPlayer: !iAmHost },
+    ];
+    for (let i = 0; i < 4; i++) entrants.push({ cre: genOpponent(1150 + Math.floor(r() * 300), lvl, Math.floor(r() * 1e9), true), isPlayer: false });
+    const race = new Race({ entrants, seed, laps: 2 });
+    runSim(race, {
+      title: `🌐 FRIENDLY GRAND PRIX — ${myName} vs ${link.remote.name}`,
+      onDone: () => finishNetRace(race, iAmHost),
+    });
+    return;
+  }
+
+  const n = mode === 'team' ? 2 : 1;
+  const mine = link.myCres.slice(0, n), theirs = link.remote.cres.slice(0, n);
   // canonical order: host = team 0 on BOTH machines → identical sim
-  const teams = iAmHost ? [[link.myCre], [link.remote.cre]] : [[link.remote.cre], [link.myCre]];
-  const labels = iAmHost ? [link.myCre.name, link.remote.cre.name] : [link.remote.cre.name, link.myCre.name];
+  const teams = iAmHost ? [mine, theirs] : [theirs, mine];
+  const labelOf = (cres) => cres.length === 1 ? cres[0].name : cres[0].name + ' & ' + cres[1].name;
+  const labels = teams.map(labelOf);
   lastReplay = { mode, seed, teams };
   const battle = new Battle({ teams, mode, seed, labels, gore: gore() });
   runSim(battle, {
-    title: `🌐 FRIENDLY ${mode === 'sumo' ? 'SUMO' : 'DUEL'} — ${myName} vs ${link.remote.name}`,
+    title: `🌐 FRIENDLY ${{ sumo: 'SUMO', team: 'TAG DUO' }[mode] || 'DUEL'} — ${myName} vs ${link.remote.name}`,
     onDone: () => finishNetBattle(battle, iAmHost),
   });
+}
+
+function finishNetRace(race, iAmHost) {
+  const standings = race.standings();
+  const myIdx = iAmHost ? 0 : 1;
+  const myEntrant = race.racers[myIdx];
+  const place = standings.indexOf(myEntrant) + 1;
+  const friendPlace = standings.indexOf(race.racers[1 - myIdx]) + 1;
+  const cre = link ? link.myCres[0] : null;
+  if (!cre) { closeModal(); return nav.link(); }
+  const beatFriend = place < friendPlace;
+  if (beatFriend) { G.stats.friendWins++; } else if (friendPlace < place) { G.stats.friendLosses++; }
+  G.stats.races++;
+  if (place === 1) { G.stats.raceWins++; cre.raceWins = (cre.raceWins || 0) + 1; }
+  const dna = [40, 28, 18, 12, 10, 8][Math.min(place - 1, 5)];
+  grantDna(dna);
+  const before = cre.level;
+  addXp(cre, Math.max(8, 18 - (place - 1) * 3));
+  save(); refreshTopbar();
+  if (beatFriend) SFX.fanfare(); else SFX.sad();
+  const connected = link && link.connected;
+  const box = showModal(`
+    <h2 style="text-align:center;color:${beatFriend ? 'var(--good)' : 'var(--bad)'}">${beatFriend ? '🏁 BRAGGING RIGHTS!' : '🏁 Beaten to the line…'}</h2>
+    <p class="dim" style="text-align:center;margin-top:8px">You: ${ordinal(place)} · ${esc(link.remote.name)}: ${ordinal(friendPlace)} (of ${race.racers.length})</p>
+    <div class="reward-row"><span>Race payout</span><b class="dna">+${dna} 🧪</b></div>
+    <div class="reward-row"><span>${esc(cre.name)}${cre.level > before ? ` <b style="color:var(--dna)">LEVEL UP! ✨</b>` : ''}</span><b>XP</b></div>
+    <div class="modal-btns" style="justify-content:center">
+      <button class="btn" id="nr-leave">Leave</button>
+      ${connected && iAmHost ? '<button class="btn primary" id="nr-again">🏁 Race again</button>' : ''}
+      ${connected && !iAmHost ? '<span class="dim" style="align-self:center">Host picks the rematch…</span>' : ''}
+    </div>`, { dismissable: false });
+  box.querySelector('#nr-leave').onclick = () => {
+    SFX.click(); net.closeNet(); link = null; closeModal();
+    if (cre.pendingTraitPicks > 0) traitPickModal(cre, () => nav.link()); else nav.link();
+  };
+  const ag = box.querySelector('#nr-again');
+  if (ag) ag.onclick = () => {
+    SFX.click();
+    const seed = Math.floor(Math.random() * 1e9);
+    net.send({ t: 'start', seed, mode: 'race' });
+    closeModal();
+    startNetMatch(seed, 'race');
+  };
 }
 
 function finishNetBattle(battle, iAmHost) {
@@ -766,46 +845,50 @@ function finishNetBattle(battle, iAmHost) {
   const myTeam = iAmHost ? 0 : 1;
   const won = sum.winnerTeam === myTeam;
   const draw = sum.winnerTeam === -1;
-  const cre = link ? link.myCre : null;
-  if (cre) {
-    if (won) { G.stats.friendWins++; cre.wins++; }
-    else if (!draw) { G.stats.friendLosses++; cre.losses++; }
-    const dna = won ? 30 : draw ? 15 : 10;
-    grantDna(dna);
-    const before = cre.level;
-    addXp(cre, won ? 16 : 8);
-    save(); refreshTopbar();
-    const connected = link && link.connected;
-    const banner = draw ? '🤝 DRAW' : won ? '🏆 VICTORY!' : '💥 DEFEAT';
-    const color = draw ? 'var(--ink-dim)' : won ? 'var(--good)' : 'var(--bad)';
-    if (won) SFX.fanfare(); else if (!draw) SFX.sad();
-    const box = showModal(`
-      <h2 style="text-align:center;color:${color};font-size:1.8rem">${banner}</h2>
-      <div class="reward-row"><span>Friendly match</span><b class="dna">+${dna} 🧪</b></div>
-      <div class="reward-row"><span>${esc(cre.name)}${cre.level > before ? ` <b style="color:var(--dna)">LEVEL UP! ${before}→${cre.level} ✨</b>` : ''}</span><b>+${won ? 16 : 8} XP</b></div>
-      ${connected ? '' : '<p class="dim" style="margin-top:8px">Friend disconnected — no rematch available.</p>'}
-      <div class="modal-btns" style="justify-content:center">
-        ${replayBtnHtml()}
-        <button class="btn" id="nb-leave">Leave</button>
-        ${connected && iAmHost ? '<button class="btn primary" id="nb-rematch">⚔️ Rematch</button>' : ''}
-        ${connected && !iAmHost ? '<span class="dim" style="align-self:center">Host picks the rematch…</span>' : ''}
-      </div>`, { dismissable: false });
-    wireReplayCopy(box);
-    box.querySelector('#nb-leave').onclick = () => {
-      SFX.click(); net.closeNet(); link = null; closeModal();
-      if (cre.pendingTraitPicks > 0) traitPickModal(cre, () => nav.link()); else nav.link();
-    };
-    const rm = box.querySelector('#nb-rematch');
-    if (rm) rm.onclick = () => {
-      SFX.click();
-      const seed = Math.floor(Math.random() * 1e9);
-      net.send({ t: 'start', seed, mode: link.mode });
-      closeModal();
-      startNetBattle(seed, link.mode);
-    };
-  } else {
-    closeModal(); nav.link();
-  }
+  const used = link ? link.myCres.slice(0, link.mode === 'team' ? 2 : 1) : [];
+  if (!used.length) { closeModal(); return nav.link(); }
+
+  if (won) G.stats.friendWins++; else if (!draw) G.stats.friendLosses++;
+  const dna = won ? 30 : draw ? 15 : 10;
+  grantDna(dna);
+  const xpAmt = won ? 16 : 8;
+  const levelNotes = used.map(c => {
+    const before = c.level;
+    if (won) c.wins++; else if (!draw) c.losses++;
+    addXp(c, xpAmt);
+    return { c, up: c.level > before };
+  });
+  save(); refreshTopbar();
+
+  const connected = link && link.connected;
+  const banner = draw ? '🤝 DRAW' : won ? '🏆 VICTORY!' : '💥 DEFEAT';
+  const color = draw ? 'var(--ink-dim)' : won ? 'var(--good)' : 'var(--bad)';
+  if (won) SFX.fanfare(); else if (!draw) SFX.sad();
+  const box = showModal(`
+    <h2 style="text-align:center;color:${color};font-size:1.8rem">${banner}</h2>
+    <div class="reward-row"><span>Friendly ${NET_MODE_LABEL[link.mode] || 'match'}</span><b class="dna">+${dna} 🧪</b></div>
+    ${levelNotes.map(({ c, up }) => `<div class="reward-row"><span>${esc(c.name)}${up ? ` <b style="color:var(--dna)">LEVEL UP! ✨</b>` : ''}</span><b>+${xpAmt} XP</b></div>`).join('')}
+    ${connected ? '' : '<p class="dim" style="margin-top:8px">Friend disconnected — no rematch available.</p>'}
+    <div class="modal-btns" style="justify-content:center">
+      ${replayBtnHtml()}
+      <button class="btn" id="nb-leave">Leave</button>
+      ${connected && iAmHost ? '<button class="btn primary" id="nb-rematch">⚔️ Rematch</button>' : ''}
+      ${connected && !iAmHost ? '<span class="dim" style="align-self:center">Host picks the rematch…</span>' : ''}
+    </div>`, { dismissable: false });
+  wireReplayCopy(box);
+  box.querySelector('#nb-leave').onclick = () => {
+    SFX.click(); net.closeNet(); link = null; closeModal();
+    const pending = used.find(c => c.pendingTraitPicks > 0);
+    if (pending) traitPickModal(pending, () => nav.link()); else nav.link();
+  };
+  const rm = box.querySelector('#nb-rematch');
+  if (rm) rm.onclick = () => {
+    SFX.click();
+    const seed = Math.floor(Math.random() * 1e9);
+    net.send({ t: 'start', seed, mode: link.mode });
+    closeModal();
+    startNetMatch(seed, link.mode);
+  };
 }
 
 // ---------------- trait picking ----------------

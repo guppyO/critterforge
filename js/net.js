@@ -7,8 +7,8 @@
 import { validateDesign, budgetOf, PLANETS } from './parts.js';
 import { TRAITS } from './creature.js';
 
-export const NET_VERSION = 5; // bump when sim behavior changes
-const PREFIX = 'critterforge-v5-';
+export const NET_VERSION = 6; // bump when sim behavior changes
+const PREFIX = 'critterforge-v6-';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no ambiguous chars
 
 export function makeCode() {
@@ -92,4 +92,19 @@ export function packCreature(cre) {
     name: cre.name, design: cre.design, level: cre.level,
     traits: cre.traits, wins: cre.wins, losses: cre.losses,
   };
+}
+
+// pack/sanitize a squad (up to 3 creatures) for the hello handshake
+export function packSquad(creatures) {
+  return creatures.slice(0, 3).map(packCreature);
+}
+export function sanitizeSquad(rawList) {
+  if (!Array.isArray(rawList) || rawList.length === 0) return { err: 'no creatures sent' };
+  const cres = [];
+  for (const raw of rawList.slice(0, 3)) {
+    const res = sanitizeRemoteCreature(raw);
+    if (res.err) return { err: res.err };
+    cres.push(res.cre);
+  }
+  return { cres };
 }

@@ -117,6 +117,32 @@ const ok = (cond, name) => { assert(cond, name); pass++; console.log('  ✓ ' + 
   }
 }
 
+// ---- online race determinism + squad validation ----
+{
+  const { Race } = await import('../js/race.js');
+  const { sanitizeSquad, packSquad } = await import('../js/net.js');
+  const host = newCreature(DEFAULT_DESIGN(), 'Hosty');
+  const guest = genOpponent(1200, 3, 61);
+  const mkEntrants = () => [
+    { cre: structuredClone(host), isPlayer: true },
+    { cre: structuredClone(guest), isPlayer: false },
+    { cre: genOpponent(1250, 3, 7001, true), isPlayer: false },
+    { cre: genOpponent(1250, 3, 7002, true), isPlayer: false },
+  ];
+  const runRaceSim = () => {
+    const race = new Race({ entrants: mkEntrants(), seed: 31337, laps: 2 });
+    race.phase = 'race'; race.phaseT = 0;
+    let guard = 0;
+    while (race.phase !== 'end' && guard++ < 60 * 400) race.step(1 / 60);
+    return race.standings().map(c => c.name).join(',');
+  };
+  ok(runRaceSim() === runRaceSim(), 'online race placements are deterministic');
+
+  const squadRes = sanitizeSquad(packSquad([host, guest]));
+  ok(!squadRes.err && squadRes.cres.length === 2, 'squad handshake validates 2 creatures');
+  ok(!!sanitizeSquad([]).err, 'empty squad rejected');
+}
+
 // ---- circuit odds sanity ----
 {
   const a = genOpponent(1500, 5, 1), b = genOpponent(1500, 5, 2);

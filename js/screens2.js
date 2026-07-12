@@ -149,7 +149,7 @@ export function showLink(container, nav) {
       <div class="dim">Friendlies: ${G.stats.friendWins}W–${G.stats.friendLosses}L</div>
     </div>
     ${!active ? '<p class="sub">You need a critter first — hit the Lab!</p>' : `
-    <p class="sub">Battle a friend over the internet. One of you hosts and shares the 4-letter code; the other joins. Your active critter <b>⭐ ${esc(active.name)}</b> will fight.</p>
+    <p class="sub">Battle a friend over the internet. One of you hosts and shares the 4-letter code; the other joins. Your champion: <b>⭐ ${esc(active.name)}</b>${G.creatures.length > 1 ? ' (Tag Duo adds your next-best critter)' : ''}.</p>
     <div class="ed-panel" style="max-width:520px">
       <h4>Your trainer name</h4>
       <div class="ed-namebar" style="margin-top:4px">
@@ -158,7 +158,13 @@ export function showLink(container, nav) {
     </div>
     <div class="grid cols3" style="margin-top:14px;max-width:760px">
       <div class="card mode-card"><div class="mc-emoji">🏠</div><h3>Host a battle</h3>
-        <p>Creates a room and gives you a code to send to your friend.</p>
+        <p>Pick the mode, create a room, send the code.</p>
+        <div class="pattern-row" style="margin-top:8px">
+          <button class="pat-btn on" data-lmode="duel">⚔️ Duel</button>
+          <button class="pat-btn" data-lmode="sumo">🟡 Sumo</button>
+          <button class="pat-btn" data-lmode="race">🏁 Race</button>
+          <button class="pat-btn" data-lmode="team">👥 Tag Duo</button>
+        </div>
         <button class="btn primary" style="width:100%;margin-top:10px" id="lk-host">Create room</button>
       </div>
       <div class="card mode-card"><div class="mc-emoji">🔗</div><h3>Join a battle</h3>
@@ -177,7 +183,13 @@ export function showLink(container, nav) {
   if (!active) return;
   const nameInput = root.querySelector('#lk-name');
   nameInput.addEventListener('input', () => { G.playerName = nameInput.value.slice(0, 14); save(); });
-  root.querySelector('#lk-host').onclick = () => { SFX.click(); nav.linkHost(); };
+  let hostMode = 'duel';
+  root.querySelectorAll('[data-lmode]').forEach(b => b.onclick = () => {
+    SFX.click();
+    hostMode = b.dataset.lmode;
+    root.querySelectorAll('[data-lmode]').forEach(x => x.classList.toggle('on', x.dataset.lmode === hostMode));
+  });
+  root.querySelector('#lk-host').onclick = () => { SFX.click(); nav.linkHost(hostMode); };
   root.querySelector('#lk-join').onclick = () => {
     const code = root.querySelector('#lk-code').value.trim().toUpperCase();
     if (code.length !== 4) { SFX.deny(); toast('Codes are 4 letters, like KRZT', true); return; }
